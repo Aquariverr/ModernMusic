@@ -4,8 +4,6 @@
 
 Listen to NetEase Cloud Music, QQ Music, Kugou Music, and local audio in Minecraft, with support for individual playback and synchronized listening with other players.
 
-**1.0.0** · Minecraft **1.21.1** · NeoForge **21.1.1 or later in the 21.1.x series** · Java **21**
-
 - Search for songs, import playlists, and manage multiple playback queues.
 - Play, pause, skip tracks, seek, adjust the volume, and switch repeat modes.
 - View album art, lyrics, and an in-game HUD, with ten visual themes to choose from.
