@@ -1,0 +1,37 @@
+# Build, local downloads and IDE state
+.gradle/
+.gradle-user-home/
+.dev-cache/
+.local/
+build/
+out/
+bin/
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.vscode/
+__pycache__/
+*.py[cod]
+
+# Runtime worlds, audio caches and credentials must stay local
+run/
+runs/
+logs/
+crash-reports/
+config/
+modernmusic-private/
+modernmusic/
+.env
+.env.*
+!.env.example
+*.key
+*.p12
+*.jks
+cookies*.json
+credentials*.json
+hs_err_pid*
+.claude
+references/
+scripts/

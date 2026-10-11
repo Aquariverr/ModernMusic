@@ -1,0 +1,8 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="All Rights Reserved"
+[[mods]]
+modId="modernmusic_audit"
+version="1"
+displayName="Modern Music Runtime Performance Audit"
+description="Opt-in measurement fixture; excluded from the released Mod."
