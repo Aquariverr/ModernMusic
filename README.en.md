@@ -16,7 +16,7 @@ Listen to NetEase Cloud Music, QQ Music, Kugou Music, and local audio in Minecra
 
 ## Installation
 
-Place `modernmusic-1.0.0.jar` in the `mods` folder of your Minecraft game directory. After joining a world, press **Ctrl+M** to open the player. No additional music API service is required.
+Place `modernmusic.jar` in the `mods` folder of your Minecraft game directory. After joining a world, press **Ctrl+M** to open the player. No additional music API service is required.
 
 Individual playback only requires the mod on the client. Synchronized multiplayer listening and shared accounts require compatible versions of the mod on both the server and participating players' clients. Listening with an FTB team also requires FTB Teams and its dependencies. Song availability depends on the music platform and your account's access permissions.
 
