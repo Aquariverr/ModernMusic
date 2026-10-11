@@ -20,10 +20,6 @@ Place `modernmusic-1.0.0.jar` in the `mods` folder of your Minecraft game direct
 
 Individual playback only requires the mod on the client. Synchronized multiplayer listening and shared accounts require compatible versions of the mod on both the server and participating players' clients. Listening with an FTB team also requires FTB Teams and its dependencies. Song availability depends on the music platform and your account's access permissions.
 
-## Building and Verifying Compatibility
-
-By default, the project compiles against NeoForge 21.1.1, the first release for Minecraft 1.21.1, with a declared compatibility range of `[21.1.1,21.2)`. Use `-Pneo_version` to build against a different version for compatibility verification. This does not change the declared minimum supported version.
-
 ## Documentation
 
 The following guides are currently available in Chinese:

@@ -20,10 +20,6 @@
 
 个人播放只需客户端安装。多人同步和共享账号需要服务器与参与玩家安装兼容版本；FTB 队伍收听还需 FTB Teams 及其依赖。歌曲是否可播放取决于音乐平台和账号权限。
 
-## 构建与兼容性验证
-
-默认使用 NeoForge 21.1.1（Minecraft 1.21.1 分支的首个发布版本）编译，兼容范围为 `[21.1.1,21.2)`。可通过 `-Pneo_version` 切换验证版本，构建时不会改变声明的最低兼容版本。
-
 ## 文档
 
 [使用指南](docs/USER-GUIDE.md) · [QQ 音乐](docs/QQ-MUSIC.md) · [酷狗音乐](docs/KUGOU-MUSIC.md) · [服务器共享账号](docs/SERVER-SHARED-ACCOUNT.md) · [外观主题](docs/THEMES.md)
