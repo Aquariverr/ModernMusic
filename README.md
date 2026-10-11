@@ -1,5 +1,7 @@
 # Modern Music
 
+简体中文 | [English](README.en.md)
+
 在 Minecraft 中收听网易云音乐、QQ 音乐、酷狗音乐和本地音频，支持个人播放和多人同步收听。
 
 **1.0.0** · Minecraft **1.21.1** · NeoForge **21.1.1 及以上的 21.1.x 版本** · Java **21**
@@ -21,12 +23,6 @@
 ## 构建与兼容性验证
 
 默认使用 NeoForge 21.1.1（Minecraft 1.21.1 分支的首个发布版本）编译，兼容范围为 `[21.1.1,21.2)`。可通过 `-Pneo_version` 切换验证版本，构建时不会改变声明的最低兼容版本。
-
-```powershell
-./scripts/dev.ps1 build
-./scripts/dev.ps1 runSearchSmoke runRoomServerSmoke
-./scripts/dev.ps1 build '-Pneo_version=21.1.256'
-```
 
 ## 文档
 
