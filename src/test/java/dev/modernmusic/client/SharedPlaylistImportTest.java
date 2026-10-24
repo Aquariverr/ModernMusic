@@ -30,10 +30,10 @@ class SharedPlaylistImportTest {
             assertTrue(player.importPlaylist("99")); assertFalse(player.importPlaylist("100"));
             provider.list.complete(new Playlist("Private playlist", List.of(new SongId(50), new SongId(51)),
                     List.of(new Track(new SongId(50), "Song", List.of("Artist"), 1_000)), 5));
-            assertTrue(player.importing()); assertEquals(1, sent.size()); assertEquals(List.of("50", "51"), sent.getFirst().songs());
+            assertTrue(player.importing()); assertEquals(1, sent.size()); assertEquals(List.of("50", "51"), sent.get(0).songs());
             assertEquals(List.of(new SongId(42)), player.queue().entries()); assertEquals(0, player.importedCount());
             player.applyRoom(room(2, List.of("42", "50")));
-            ack.complete(new RoomImportResult(sent.getFirst().request(), 1, 5, ""));
+            ack.complete(new RoomImportResult(sent.get(0).request(), 1, 5, ""));
             assertFalse(player.importing()); assertEquals(1, player.importedCount()); assertEquals(5, player.importTotal());
             assertEquals("modernmusic.playlist.partial", player.importMessage()); assertNotNull(player.track(new SongId(50)));
             assertEquals(0, output.loads); assertEquals(0, player.queue().index());
@@ -57,7 +57,7 @@ class SharedPlaylistImportTest {
         try (var player = new PlaybackController(provider, (uri, max) -> new byte[0], new SharedPlaybackTest.Output(), Runnable::run)) {
             player.applyRoom(room(1, List.of("42"))); player.roomImporter(request -> { sent.add(request); return ack; });
             player.importPlaylist("99"); provider.list.complete(new Playlist("List", List.of(new SongId(50)), List.of(), 1));
-            player.applyRoom(null); ack.complete(new RoomImportResult(sent.getFirst().request(), 1, 1, ""));
+            player.applyRoom(null); ack.complete(new RoomImportResult(sent.get(0).request(), 1, 1, ""));
             assertFalse(player.shared()); assertTrue(player.queue().entries().isEmpty()); assertNull(player.importMessage());
         }
     }

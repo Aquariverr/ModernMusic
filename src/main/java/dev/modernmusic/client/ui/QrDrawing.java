@@ -20,10 +20,10 @@ final class QrDrawing {
         var vertices = graphics.bufferSource().getBuffer(RenderType.gui());
         var pose = graphics.pose().last().pose();
         modules(matrix, x, top, scale, (x0, y0, x1, y1) -> {
-            vertices.addVertex(pose, x1, y1, 0).setColor(0xFF000000);
-            vertices.addVertex(pose, x1, y0, 0).setColor(0xFF000000);
-            vertices.addVertex(pose, x0, y0, 0).setColor(0xFF000000);
-            vertices.addVertex(pose, x0, y1, 0).setColor(0xFF000000);
+            vertices.vertex(pose, x1, y1, 0).color(0xFF000000).endVertex();
+            vertices.vertex(pose, x1, y0, 0).color(0xFF000000).endVertex();
+            vertices.vertex(pose, x0, y0, 0).color(0xFF000000).endVertex();
+            vertices.vertex(pose, x0, y1, 0).color(0xFF000000).endVertex();
         });
         graphics.flush();
     }

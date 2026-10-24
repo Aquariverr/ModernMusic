@@ -118,8 +118,7 @@ public final class PlayerScreen extends MusicScreen {
                 if (isFocused() && net.minecraft.Util.getMillis() / 300 % 2 == 0) g.fill(getX(), getY() - 1, getX() + 1, getY() + font.lineHeight, FIELD_TEXT);
             }
         };
-        input.setBordered(false); input.setTextShadow(false);
-        input.setMaxLength(SongReferenceParser.MAX_INPUT_LENGTH);
+        input.setBordered(false); input.setMaxLength(SongReferenceParser.MAX_INPUT_LENGTH);
         input.setTextColor(FIELD_TEXT); input.setTextColorUneditable(FIELD_HINT);
         input.setTooltip(Tooltip.create(input.getMessage()));
         input.setValue(savedInput);
@@ -321,7 +320,7 @@ public final class PlayerScreen extends MusicScreen {
         var room = roomClient == null ? null : roomClient.update().room();
         int pageSize = Math.max(1, rows.size());
         int lastPage = Math.max(0, (entries.size() - 1) / pageSize);
-        page = Math.clamp(page, 0, lastPage);
+        page = dev.modernmusic.compat.Java17.clamp(page, 0, lastPage);
         if (previousPage != null) {
             previousPage.active = page > 0; nextPage.active = page < lastPage;
             previousPage.visible = nextPage.visible = !entries.isEmpty();
@@ -374,10 +373,9 @@ public final class PlayerScreen extends MusicScreen {
         }
     }
 
-    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g) {
         // Screen.render calls this before widgets, so the blur never reaches foreground text.
-        if (client().level == null) renderPanorama(g, partialTick);
-        renderBlurredBackground(partialTick);
+        if (client().level == null) renderDirtBackground(g);
         scrim(g, width, height);
         panel(g, left, top, panelWidth, panelHeight, 12);
         header(g, left, top, panelWidth, 32);
@@ -632,7 +630,7 @@ public final class PlayerScreen extends MusicScreen {
         private void refresh() {
             var audio = player.audio();
             active = player.state() == PlaybackController.State.PLAYING || player.state() == PlaybackController.State.PAUSED;
-            if (!dragging) value = audio.durationMs() == 0 ? 0 : Math.clamp((double) audio.positionMs() / audio.durationMs(), 0, 1);
+            if (!dragging) value = audio.durationMs() == 0 ? 0 : dev.modernmusic.compat.Java17.clamp((double) audio.positionMs() / audio.durationMs(), 0, 1);
             updateMessage();
         }
         @Override protected void updateMessage() {

@@ -18,7 +18,7 @@ class ThemedEditBox extends EditBox {
     ThemedEditBox(Font font, int x, int y, int width, int height, Component label, Icon icon) {
         super(font, x + (icon == null ? 8 : 24), y + (height - 8) / 2, width - (icon == null ? 16 : 32), 8, label);
         fieldHeight = height; inset = icon == null ? 8 : 24; symbol = icon;
-        setBordered(false); setTextColor(FIELD_TEXT); setTextColorUneditable(FIELD_HINT); setTextShadow(false);
+        setBordered(false); setTextColor(FIELD_TEXT); setTextColorUneditable(FIELD_HINT);
     }
     @ParametersAreNonnullByDefault @Override public void setHint(Component hint) { placeholder = hint; super.setHint(hint); }
     @ParametersAreNonnullByDefault @Override public void renderWidget(GuiGraphics g, int mx, int my, float delta) {

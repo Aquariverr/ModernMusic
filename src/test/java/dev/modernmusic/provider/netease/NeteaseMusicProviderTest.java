@@ -29,7 +29,7 @@ class NeteaseMusicProviderTest {
         }, CLOCK)) {
             var tracks = provider.getTracks(List.of(new SongId(42), new SongId(43))).join();
             assertEquals(List.of(new SongId(43), new SongId(42)), tracks.stream().map(dev.modernmusic.domain.Track::id).toList());
-            assertEquals("Second", tracks.getFirst().title()); assertEquals(1, requests.get());
+            assertEquals("Second", tracks.get(0).title()); assertEquals(1, requests.get());
         }
     }
     @Test void authenticatedResolutionUsesOnlyAccountTransportAndReportsExpiredSnapshot() {

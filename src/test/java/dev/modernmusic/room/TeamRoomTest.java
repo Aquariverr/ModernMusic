@@ -162,7 +162,7 @@ class TeamRoomTest {
         restarted.execute(owner, "Owner", new RoomCommand(JOIN_TEAM, null, null, -1, "", 0), null, now);
         var current = restarted.current(owner);
         restarted.execute(owner, "Owner", new RoomCommand(CLEAR, current.id(), current.epoch(), current.revision(), "", 0), null, now);
-        assertTrue(restarted.teamQueues().getFirst().songs().isEmpty());
+        assertTrue(restarted.teamQueues().get(0).songs().isEmpty());
     }
     @Test void groupAndTeamMembershipAreMutuallyExclusive() {
         rooms.execute(owner, "Owner", new RoomCommand(CREATE, null, null, -1, "Group", 0), null, now);

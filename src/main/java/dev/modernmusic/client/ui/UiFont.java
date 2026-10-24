@@ -4,13 +4,9 @@ import com.mojang.blaze3d.font.GlyphProvider;
 import dev.modernmusic.ModernMusic;
 import dev.modernmusic.client.HudSettings;
 import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.font.FontOption;
 import net.minecraft.client.gui.font.FontSet;
-import net.minecraft.client.gui.font.providers.TrueTypeGlyphProviderDefinition;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
 
@@ -20,7 +16,7 @@ import net.minecraft.resources.ResourceLocation;
  * Font sets are built lazily for the scales in use and rebuilt after the vanilla font reloads.
  */
 public final class UiFont {
-    private static final ResourceLocation FILE = ResourceLocation.fromNamespaceAndPath(ModernMusic.MOD_ID, "ui_sans.ttf");
+    private static final ResourceLocation FILE = new ResourceLocation(ModernMusic.MOD_ID, "ui_sans.ttf");
     static final float SIZE = 9.5f;
     // Centers ideographs on the vanilla 0–8 glyph box; snapped per scale so outlines stay on the pixel grid.
     private static final float SHIFT_Y = .5f;
@@ -31,7 +27,6 @@ public final class UiFont {
     private static final Variant[] variants = new Variant[fonts.length];
     private static final long[] used = new long[fonts.length];
     private static FontSet vanillaDefault;
-    private static Set<FontOption> options = Set.of();
     private static boolean smooth = true, failed;
     // Zero means the native HUD viewport; positive values mark a scoped music menu, even at exactly 1x.
     private static double layoutScale;
@@ -55,7 +50,7 @@ public final class UiFont {
         double previous = layoutScale; layoutScale = value; return previous;
     }
 
-    /** UI text at the active viewport scale; the pixel font only when disabled or if the TTF failed. */
+    /** UI text at the active viewport scale; the pixel font at scale 1, when disabled or if the TTF failed. */
     public static Font get() { return get(1); }
 
     /** Text that the pose additionally scales, e.g. a resized HUD component. */
@@ -65,6 +60,7 @@ public final class UiFont {
         int gui = guiScale();
         if (!smooth || failed) return game.font;
         synchronizeFonts(game);
+        if (physicalScale <= 1) return game.font;
         int oversample = scaleKey(physicalScale * poseScale);
         // Sliders sweep through scales; reuse the closest atlas instead of building one per step.
         if (layoutScale == 0 && oversample != gui && variants[oversample] == null && System.nanoTime() - lastBuild < REBUILD_INTERVAL_NANOS)
@@ -92,7 +88,7 @@ public final class UiFont {
         double gui = window.getGuiScale();
         double menu = MusicScreenLayout.fit(window.getWidth(), window.getHeight()).pixelsPerUnit();
         hud.ensureLayout(width, height);
-        boolean changed = warmScale(0, gui) | warmScale(1, menu) | warmScale(2, menu * 1.5);
+        boolean changed = warmScale(0, gui) | warmScale(1, menu) | warmScale(2, menu > 1 ? menu * 1.5 : 0);
         changed |= warmHudScale(3, hud, HudSettings.Part.INFO, gui, width, height);
         changed |= warmHudScale(4, hud, HudSettings.Part.LYRICS, gui, width, height);
         changed |= warmHudScale(5, hud, HudSettings.Part.PROGRESS, gui, width, height);
@@ -112,22 +108,21 @@ public final class UiFont {
         FontSet vanilla = game.font.getFontSet(Style.DEFAULT_FONT);
         // Do this before option reloads: old variants may still refer to closed vanilla providers.
         if (vanilla != vanillaDefault) { clear(); vanillaDefault = vanilla; }
-        int bits = (game.options.forceUnicodeFont().get() ? 1 : 0) | (game.options.japaneseGlyphVariants().get() ? 2 : 0);
+        int bits = (game.options.forceUnicodeFont().get() ? 1 : 0);
         if (bits != optionBits) {
             optionBits = bits;
-            options = fontOptions(game);
-            for (var variant : variants) if (variant != null) variant.set.reload(options);
+            clear();
         }
     }
 
     private static boolean warmHudScale(int slot, HudSettings hud, HudSettings.Part part, double gui, int width, int height) {
         var component = hud.component(part);
-        return warmKey(slot, hud.enabled() && component.enabled() && component.opacity() >= .01
+        return warmKey(slot, gui > 1 && hud.enabled() && component.enabled() && component.opacity() >= .01
                 ? scaleKey(gui * component.fitScale(width, height)) : 0);
     }
 
     private static boolean warmScale(int slot, double scale) {
-        return warmKey(slot, scale > 0 ? scaleKey(scale) : 0);
+        return warmKey(slot, scale > 1 ? scaleKey(scale) : 0);
     }
 
     private static boolean warmKey(int slot, int key) {
@@ -146,7 +141,7 @@ public final class UiFont {
 
     private static int scaleKey(double scale) {
         // Fractional menu scales need their own raster size; 1/64 steps bound cache keys during resizing.
-        return Math.clamp(Math.round(scale * SCALE_STEPS), SCALE_STEPS, MAX_OVERSAMPLE * SCALE_STEPS);
+        return dev.modernmusic.compat.Java17.clamp(Math.round(scale * SCALE_STEPS), SCALE_STEPS, MAX_OVERSAMPLE * SCALE_STEPS);
     }
 
     private static int nearestBuilt(int wanted, int fallback) {
@@ -193,15 +188,13 @@ public final class UiFont {
         long started = System.nanoTime();
         float oversample = key / (float) SCALE_STEPS;
         float shift = Math.round(SHIFT_Y * oversample) / oversample;
-        var definition = new TrueTypeGlyphProviderDefinition(FILE, SIZE, oversample,
-                new TrueTypeGlyphProviderDefinition.Shift(0, shift), "");
-        GlyphProvider provider = definition.unpack().left().orElseThrow().load(game.getResourceManager());
+        GlyphProvider provider = EmGlyphProvider.load(game.getResourceManager(), FILE, SIZE, oversample, shift);
         try {
-            var set = new LazyFontSet(game.getTextureManager(), ResourceLocation.fromNamespaceAndPath(ModernMusic.MOD_ID, "ui_" + key));
-            var providers = new ArrayList<GlyphProvider.Conditional>();
-            providers.add(new GlyphProvider.Conditional(provider, FontOption.Filter.ALWAYS_PASS));
-            providers.addAll(vanilla.allProviders);
-            set.reload(providers, options);
+            var set = new LazyFontSet(game.getTextureManager(), new ResourceLocation(ModernMusic.MOD_ID, "ui_" + key));
+            var providers = new ArrayList<GlyphProvider>();
+            providers.add(provider);
+            providers.addAll(vanilla.providers);
+            set.reload(providers);
             ModernMusic.LOGGER.info("UI font x{} ready in {} ms", oversample, (System.nanoTime() - started) / 1_000_000);
             return new Variant(provider, set);
         } catch (RuntimeException error) {
@@ -209,12 +202,6 @@ public final class UiFont {
         }
     }
 
-    private static Set<FontOption> fontOptions(Minecraft game) {
-        var set = EnumSet.noneOf(FontOption.class);
-        if (game.options.forceUnicodeFont().get()) set.add(FontOption.UNIFORM);
-        if (game.options.japaneseGlyphVariants().get()) set.add(FontOption.JAPANESE_VARIANTS);
-        return set;
-    }
 
     /** Releases glyph atlases and font memory; the next use rebuilds what it needs. */
     public static void clear() {

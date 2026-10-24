@@ -20,9 +20,6 @@ import java.util.concurrent.CancellationException;
 public final class AudioFiles {
     public static final int MAX_AUDIO_BYTES = 32 * 1024 * 1024;
     public static final int MAX_PCM_BYTES = Mp3Decoder.MAX_PCM_BYTES;
-    public static final int MIN_SAMPLE_RATE = 1000;
-    /** Longest possible decoded mono PCM at the lowest supported sample rate. */
-    public static final long MAX_DURATION_MS = MAX_PCM_BYTES / 2L * 1000 / MIN_SAMPLE_RATE;
     public static final int MAX_LIBRARY_FILES = 512;
     private AudioFiles() { }
 
@@ -169,7 +166,7 @@ public final class AudioFiles {
                 foundFormat = true;
                 encoding = u16(bytes, chunk); channels = u16(bytes, chunk + 2);
                 long sampleRate = u32(bytes, chunk + 4);
-                if (sampleRate < MIN_SAMPLE_RATE || sampleRate > 192000) throw unsupported();
+                if (sampleRate < 1000 || sampleRate > 192000) throw unsupported();
                 rate = (int) sampleRate; align = u16(bytes, chunk + 12); bits = u16(bytes, chunk + 14);
                 if (encoding == 0xfffe) {
                     if (length < 40 || u16(bytes, chunk + 16) < 22 || u16(bytes, chunk + 18) != bits) throw unsupported();

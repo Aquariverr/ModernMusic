@@ -12,7 +12,7 @@ public final class SearchProbe {
             if (first.tracks().isEmpty() || !first.hasMore()) throw new IllegalStateException("Missing public search results");
             var next = provider.searchSongs("晴天", 5, 5).join();
             if (next.tracks().isEmpty() || first.tracks().equals(next.tracks())) throw new IllegalStateException("Pagination failed");
-            System.out.printf("PASS: guest search total=%d first=%d next=%d firstId=%s%n", first.total(), first.tracks().size(), next.tracks().size(), first.tracks().getFirst().id());
+            System.out.printf("PASS: guest search total=%d first=%d next=%d firstId=%s%n", first.total(), first.tracks().size(), next.tracks().size(), first.tracks().get(0).id());
         }
     }
 }

@@ -60,7 +60,7 @@ public final class SharedAccountScenario {
                     rooms.command(INVITE, other.get().getGameProfile().getName(), 0); rooms.command(ADD, "", 43); step++;
                 } else {
                     if (rooms.update().invitations().isEmpty()) return null;
-                    rooms.join(rooms.update().invitations().getFirst()); step++;
+                    rooms.join(rooms.update().invitations().get(0)); step++;
                 }
             }
             case 5 -> {
@@ -135,7 +135,7 @@ public final class SharedAccountScenario {
             }
             case 12 -> {
                 if (player.shared()) return null;
-                if (source.selected() || player.queue().entries().size() != 1 || player.queue().entries().getFirst().value() != 42)
+                if (source.selected() || player.queue().entries().size() != 1 || player.queue().entries().get(0).value() != 42)
                     throw new AssertionError("Local source / queue restoration failed");
                 Files.writeString(directory.resolve("shared-done.txt"), "PASS\n");
                 if (host && !Files.exists(peer.resolve("shared-done.txt"))) return null;

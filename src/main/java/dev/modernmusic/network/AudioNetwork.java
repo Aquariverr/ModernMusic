@@ -9,18 +9,17 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
 import javax.annotation.Nonnull;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.network.FriendlyByteBuf;
+import dev.modernmusic.network.PacketCodec;
+import dev.modernmusic.network.MusicPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.event.server.*;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
-import net.neoforged.neoforge.network.PacketDistributor;
-import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
+import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.server.*;
+import net.minecraftforge.event.TickEvent;
+import dev.modernmusic.network.ForgeNetwork;
 
 /** Optional, session-bound file transport. No client class is loaded on dedicated servers. */
 public final class AudioNetwork {
@@ -36,45 +35,45 @@ public final class AudioNetwork {
     private long nextState;
 
     public AudioNetwork(IEventBus bus) {
-        bus.addListener(this::register);
-        NeoForge.EVENT_BUS.addListener((ServerStartingEvent event) -> {
+        register();
+        MinecraftForge.EVENT_BUS.addListener((ServerStartingEvent event) -> {
             session = UUID.randomUUID(); worker = AsyncTasks.executor("modernmusic-server-audio", 2, 8);
-            store = new ServerAudioStore(event.getServer().getServerDirectory().resolve("modernmusic/audio-server"));
+            store = new ServerAudioStore(event.getServer().getServerDirectory().toPath().resolve("modernmusic/audio-server"));
             activeStore = store; nextState = 0;
         });
-        NeoForge.EVENT_BUS.addListener((ServerStoppedEvent event) -> {
+        MinecraftForge.EVENT_BUS.addListener((ServerStoppedEvent event) -> {
             var abandoned = List.copyOf(jobs.values()); jobs.clear(); transfers.clear(); ingress.clear();
             abandoned.forEach(Job::cancel);
             if (worker != null) worker.shutdownNow(); worker = null; store = null; activeStore = null;
         });
-        NeoForge.EVENT_BUS.addListener((PlayerEvent.PlayerLoggedOutEvent event) -> {
+        MinecraftForge.EVENT_BUS.addListener((PlayerEvent.PlayerLoggedOutEvent event) -> {
             if (event.getEntity() instanceof ServerPlayer player) {
                 for (Job job : List.copyOf(jobs.values())) if (job.player == player) { remove(job); job.cancel(); }
                 ingress.remove(player.getUUID());
             }
         });
-        NeoForge.EVENT_BUS.addListener(this::tick);
+        MinecraftForge.EVENT_BUS.addListener(this::tick);
     }
     public static boolean contains(SongId id) { var current = activeStore; return current != null && current.contains(id); }
     public enum Command { CATALOG, DOWNLOAD, UPLOAD_BEGIN, UPLOAD_CHUNK, UPLOAD_END, CANCEL }
     public enum Reply { CATALOG, DOWNLOAD_BEGIN, DOWNLOAD_CHUNK, UPLOAD_READY, UPLOADED, ERROR }
-    public record StatePayload(UUID session, boolean canUpload) implements CustomPacketPayload {
-        public static final Type<StatePayload> TYPE = new Type<>(id("audio_state"));
-        public static final StreamCodec<RegistryFriendlyByteBuf, StatePayload> CODEC = StreamCodec.of(
+    public record StatePayload(UUID session, boolean canUpload) implements MusicPayload {
+        public static final Type<StatePayload> TYPE = new Type<>(id("audio_state"), StatePayload.class);
+        public static final PacketCodec<FriendlyByteBuf, StatePayload> CODEC = PacketCodec.of(
                 (b, v) -> { b.writeUUID(v.session); b.writeBoolean(v.canUpload); }, b -> new StatePayload(b.readUUID(), b.readBoolean()));
         @Nonnull @Override public Type<StatePayload> type() { return TYPE; }
     }
-    public record CommandPayload(UUID session, UUID request, Command command, String value, int total, int offset, byte[] bytes) implements CustomPacketPayload {
-        public static final Type<CommandPayload> TYPE = new Type<>(id("audio_command"));
-        public static final StreamCodec<RegistryFriendlyByteBuf, CommandPayload> CODEC = StreamCodec.of((b, v) -> {
+    public record CommandPayload(UUID session, UUID request, Command command, String value, int total, int offset, byte[] bytes) implements MusicPayload {
+        public static final Type<CommandPayload> TYPE = new Type<>(id("audio_command"), CommandPayload.class);
+        public static final PacketCodec<FriendlyByteBuf, CommandPayload> CODEC = PacketCodec.of((b, v) -> {
             b.writeUUID(v.session); b.writeUUID(v.request); b.writeEnum(v.command); b.writeUtf(v.value, 180);
             b.writeVarInt(v.total); b.writeVarInt(v.offset); b.writeByteArray(v.bytes);
         }, b -> new CommandPayload(b.readUUID(), b.readUUID(), b.readEnum(Command.class), b.readUtf(180), b.readVarInt(), b.readVarInt(), b.readByteArray(AudioTransfer.CHUNK_BYTES)));
         @Nonnull @Override public Type<CommandPayload> type() { return TYPE; }
     }
-    public record ReplyPayload(UUID session, UUID request, Reply reply, List<Track> tracks, int total, int offset, byte[] bytes, MusicError error) implements CustomPacketPayload {
-        public static final Type<ReplyPayload> TYPE = new Type<>(id("audio_reply"));
-        public static final StreamCodec<RegistryFriendlyByteBuf, ReplyPayload> CODEC = StreamCodec.of((b, v) -> {
+    public record ReplyPayload(UUID session, UUID request, Reply reply, List<Track> tracks, int total, int offset, byte[] bytes, MusicError error) implements MusicPayload {
+        public static final Type<ReplyPayload> TYPE = new Type<>(id("audio_reply"), ReplyPayload.class);
+        public static final PacketCodec<FriendlyByteBuf, ReplyPayload> CODEC = PacketCodec.of((b, v) -> {
             b.writeUUID(v.session); b.writeUUID(v.request); b.writeEnum(v.reply); b.writeVarInt(v.tracks.size());
             for (Track track : v.tracks) { b.writeUtf(track.id().toString(), 64); b.writeUtf(track.title(), 180); b.writeLong(track.durationMs()); }
             b.writeVarInt(v.total); b.writeVarInt(v.offset); b.writeByteArray(v.bytes); b.writeBoolean(v.error != null); if (v.error != null) b.writeEnum(v.error);
@@ -90,13 +89,13 @@ public final class AudioNetwork {
         });
         @Nonnull @Override public Type<ReplyPayload> type() { return TYPE; }
     }
-    private static ResourceLocation id(String name) { return ResourceLocation.fromNamespaceAndPath(ModernMusic.MOD_ID, name); }
-    private void register(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("audio-1").optional();
+    private static ResourceLocation id(String name) { return new ResourceLocation(ModernMusic.MOD_ID, name); }
+    private void register() {
+        var registrar = ForgeNetwork.registrar();
         registrar.playToClient(StatePayload.TYPE, StatePayload.CODEC, (data, context) -> clientState.accept(data));
         registrar.playToClient(ReplyPayload.TYPE, ReplyPayload.CODEC, (data, context) -> clientReply.accept(data));
         registrar.playToServer(CommandPayload.TYPE, CommandPayload.CODEC, (data, context) -> {
-            if (context.player() instanceof ServerPlayer player && player.connection.hasChannel(ReplyPayload.TYPE)) receive(player, data);
+            if (context.player() instanceof ServerPlayer player && ForgeNetwork.available(player.connection.connection)) receive(player, data);
         });
     }
     private void receive(ServerPlayer player, CommandPayload data) {
@@ -176,7 +175,8 @@ public final class AudioNetwork {
     private boolean current(Job job, ServerAudioStore source) {
         return store == source && jobs.get(job.id) == job && job.player.server.getPlayerList().getPlayer(job.player.getUUID()) == job.player;
     }
-    private void tick(ServerTickEvent.Post event) {
+    private void tick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
         if (store == null) return;
         long now = RoomNetwork.now(); int budget = AudioTransferQueue.MAX_ACTIVE * AudioTransferQueue.CHUNKS_PER_TICK;
         for (var job : List.copyOf(jobs.values())) {
@@ -198,9 +198,9 @@ public final class AudioNetwork {
         for (UUID request : transfers.startWaiting()) startDownload(jobs.get(request));
         if (now >= nextState) {
             nextState = now + 1_000;
-            for (var player : event.getServer().getPlayerList().getPlayers()) if (player.connection.hasChannel(StatePayload.TYPE)) {
+            for (var player : event.getServer().getPlayerList().getPlayers()) if (ForgeNetwork.available(player.connection.connection)) {
                 boolean allowed = player.hasPermissions(2);
-                PacketDistributor.sendToPlayer(player, new StatePayload(session, allowed));
+                ForgeNetwork.sendToPlayer(player, new StatePayload(session, allowed));
             }
         }
     }
@@ -208,7 +208,7 @@ public final class AudioNetwork {
     private void fail(Job job, MusicError error) { remove(job); job.cancel(); error(job.player, job.id, error); }
     private void error(ServerPlayer player, UUID request, MusicError error) { send(player, request, Reply.ERROR, List.of(), 0, 0, new byte[0], error); }
     private void send(ServerPlayer player, UUID request, Reply reply, List<Track> tracks, int total, int offset, byte[] bytes, MusicError error) {
-        PacketDistributor.sendToPlayer(player, new ReplyPayload(session, request, reply, tracks, total, offset, bytes, error));
+        ForgeNetwork.sendToPlayer(player, new ReplyPayload(session, request, reply, tracks, total, offset, bytes, error));
     }
     private static MusicError category(Throwable failure) {
         while ((failure instanceof CompletionException || failure instanceof ExecutionException) && failure.getCause() != null) failure = failure.getCause();

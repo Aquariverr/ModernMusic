@@ -67,7 +67,7 @@ class NeteaseImportMetadataTest {
         var provider = new Provider();
         try (var player = player(provider, new SharedPlaybackTest.Output())) {
             player.add("1"); player.add("42");
-            provider.results.getFirst().completeExceptionally(new MusicException(MusicError.NETWORK_ERROR));
+            provider.results.get(0).completeExceptionally(new MusicException(MusicError.NETWORK_ERROR));
             for (int i = 0; i < 60; i++) player.tick(1);
             assertEquals(1, provider.batches.size()); assertEquals(PlaybackController.State.LOADING, player.state());
             assertEquals(song(1), player.track()); assertEquals(1, provider.resolves);

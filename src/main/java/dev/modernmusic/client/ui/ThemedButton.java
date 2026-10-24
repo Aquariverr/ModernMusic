@@ -38,7 +38,7 @@ class ThemedButton extends Button {
     /** Hover emphasis between 0 and 1, eased over a few frames. */
     float hover() { return hover; }
     int radius() { return height / 2; }
-    @Override public void onClick(double x, double y, int button) { held = true; super.onClick(x, y, button); }
+    @Override public void onClick(double x, double y) { held = true; super.onClick(x, y); }
     @Override public void onPress() {
         if (selectedOnly) return;
         // Keyboard activation has no release to wait for; show the press for a moment instead.

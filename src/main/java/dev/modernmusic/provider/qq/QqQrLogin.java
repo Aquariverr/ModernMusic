@@ -79,7 +79,7 @@ final class QqQrLogin {
         var matcher = ARGUMENT.matcher(callback.group(1)); var args = new ArrayList<String>();
         while (matcher.find()) args.add(matcher.group(1));
         if (args.isEmpty()) throw invalid();
-        return switch (args.getFirst()) {
+        return switch (args.get(0)) {
             case "66" -> new QrPoll(QrState.WAITING, null);
             case "67" -> new QrPoll(QrState.CONFIRM, null);
             case "65" -> new QrPoll(QrState.EXPIRED, null);

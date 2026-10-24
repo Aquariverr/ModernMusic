@@ -71,7 +71,7 @@ public final class PlaybackQueue {
                 for (int i = 0; i < entries.size(); i++) if (i != index) shuffled.add(i);
                 java.util.Collections.shuffle(shuffled, random);
             }
-            return shuffled.removeFirst();
+            return shuffled.remove(0);
         }
         if (index + 1 < entries.size()) return index + 1;
         return mode == PlaybackMode.SEQUENTIAL ? -1 : 0;

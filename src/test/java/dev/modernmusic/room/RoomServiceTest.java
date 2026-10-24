@@ -12,9 +12,7 @@ class RoomServiceTest {
     void create() { service.execute(owner, "Owner", new RoomCommand(CREATE, null, null, -1, "Test", 0), null, now); }
     void command(UUID sender, RoomCommand.Action action, long value, UUID target) {
         var room = service.current(sender); now += 100;
-        service.execute(sender, sender.equals(owner) ? "Owner" : "Listener", new RoomCommand(action, room.id(), room.epoch(),
-                action == DURATION ? room.playbackRevision() : room.revision(),
-                action == DURATION && room.index() >= 0 ? room.songs().get(room.index()) : "", value), target, now);
+        service.execute(sender, sender.equals(owner) ? "Owner" : "Listener", new RoomCommand(action, room.id(), room.epoch(), room.revision(), "", value), target, now);
     }
     void join() {
         command(owner, INVITE, 0, listener); var room = service.current(owner); now += 100;
@@ -41,7 +39,7 @@ class RoomServiceTest {
         create(); join(); rejected(() -> command(listener, ADD, 42, null), "request_permission");
         command(owner, REQUESTER, 1, listener); command(listener, ADD, 42, null);
         assertEquals(List.of("42"), service.current(owner).songs());
-        for (var action : List.of(PLAY, STOP, PAUSE, SEEK, NEXT, MODE, REMOVE, CLEAR)) {
+        for (var action : List.of(PLAY, STOP, PAUSE, SEEK, NEXT, MODE, REMOVE, CLEAR, DURATION)) {
             now += 1_000; rejected(() -> command(listener, action, 0, outsider), "permission");
         }
         for (var action : List.of(DJ, REQUESTER, KICK, INVITE, DISSOLVE)) {
@@ -102,7 +100,7 @@ class RoomServiceTest {
         rejected(() -> service.execute(listener, "Listener", new RoomCommand(JOIN, room.id(), room.epoch(), -1, "", 0), null, now), "invite");
         join(); service.disconnect(owner); assertEquals(owner, service.current(listener).owner());
         assertFalse(service.current(listener).canControl(listener)); service.disconnect(listener);
-        assertEquals(1, service.snapshots().size()); assertTrue(service.snapshots().getFirst().members().isEmpty());
+        assertEquals(1, service.snapshots().size()); assertTrue(service.snapshots().get(0).members().isEmpty());
     }
     @Test void roomsAreIsolatedAndEachPlayerCanJoinOnlyOne() {
         create(); service.execute(outsider, "Other", new RoomCommand(CREATE, null, null, -1, "Other", 0), null, now);
@@ -116,7 +114,7 @@ class RoomServiceTest {
         rejected(() -> command(owner, ADD, 401, null), "full");
         rejected(() -> command(owner, REMOVE, Long.MAX_VALUE, null), "input");
         rejected(() -> command(owner, PLAY, -1, null), "input");
-        command(owner, PLAY, 0, null); rejected(() -> command(owner, DURATION, dev.modernmusic.audio.AudioFiles.MAX_DURATION_MS + 1, null), "input");
+        command(owner, PLAY, 0, null); rejected(() -> command(owner, DURATION, 3_600_001, null), "input");
         now += 1_000; var room = service.current(owner);
         for (int i = 0; i < 12; i++) service.execute(owner, "Owner", new RoomCommand(SNAPSHOT, room.id(), room.epoch(), room.revision(), "", 0), null, now);
         rejected(() -> service.execute(owner, "Owner", new RoomCommand(SNAPSHOT, room.id(), room.epoch(), room.revision(), "", 0), null, now), "rate");
@@ -162,7 +160,7 @@ class RoomServiceTest {
         for (int i = 1; i < 400; i++) { now += 1_000; command(owner, ADD, i, null); }
         var receipt = service.append(listener, request, now);
         assertEquals(1, receipt.imported()); assertEquals(600, receipt.total());
-        assertEquals(400, service.current(owner).songs().size()); assertEquals("500", service.current(owner).songs().getLast());
+        assertEquals(400, service.current(owner).songs().size()); assertEquals("500", dev.modernmusic.compat.Java17.last(service.current(owner).songs()));
         var full = service.append(listener, new RoomImportRequest(UUID.randomUUID(), initial.id(), initial.epoch(), List.of("600"), 1), now);
         assertEquals(0, full.imported()); assertEquals("modernmusic.status.queue_full", full.message());
     }

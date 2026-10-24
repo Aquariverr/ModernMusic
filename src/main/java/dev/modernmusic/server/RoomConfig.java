@@ -1,14 +1,14 @@
 package dev.modernmusic.server;
 
 import dev.modernmusic.room.RoomService;
-import net.neoforged.neoforge.common.ModConfigSpec;
+import net.minecraftforge.common.ForgeConfigSpec;
 
 /** World/server settings. Existing rooms survive a lower creation limit. */
 public final class RoomConfig {
-    public static final ModConfigSpec SPEC;
-    public static final ModConfigSpec.IntValue MAX_OWNED_ROOMS;
+    public static final ForgeConfigSpec SPEC;
+    public static final ForgeConfigSpec.IntValue MAX_OWNED_ROOMS;
     static {
-        var builder = new ModConfigSpec.Builder();
+        var builder = new ForgeConfigSpec.Builder();
         builder.push("rooms");
         MAX_OWNED_ROOMS = builder.comment(
                 "Maximum persistent rooms each player may create. FTB Teams rooms do not count.",

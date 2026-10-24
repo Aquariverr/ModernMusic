@@ -28,7 +28,7 @@ public final class QueueManagerScreen extends MusicScreen {
         panelWidth = Math.min(440, width - 24); panelHeight = Math.min(330, height - 20);
         left = (width - panelWidth) / 2; top = (height - panelHeight) / 2;
         pageSize = Math.max(1, (panelHeight - 156) / 30);
-        page = Math.clamp(page, 0, (player.library().queues().size() - 1) / pageSize);
+        page = dev.modernmusic.compat.Java17.clamp(page, 0, (player.library().queues().size() - 1) / pageSize);
         addRenderableWidget(new IconButton(left + panelWidth - 76, top + 6, 60, 20, Component.translatable("gui.back"), Icon.LEFT, false, true, this::onClose));
         var queues = player.library().queues();
         for (int i = 0; i < pageSize && page * pageSize + i < queues.size(); i++) {
@@ -72,9 +72,8 @@ public final class QueueManagerScreen extends MusicScreen {
         create.active = valid && player.queuesReady() && player.library().queues().size() < QueueLibrary.MAX_QUEUES;
         rename.active = valid && player.queuesReady();
     }
-    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g, int x, int y, float delta) {
-        if (client().level == null) renderPanorama(g, delta);
-        renderBlurredBackground(delta);
+    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g) {
+        if (client().level == null) renderDirtBackground(g);
         scrim(g, width, height);
         panel(g, left, top, panelWidth, panelHeight, 12);
         header(g, left, top, panelWidth, 32);

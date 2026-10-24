@@ -41,7 +41,7 @@ class KugouWebsiteSessionTest {
         assertEquals("device", session.cookie().value("mid")); assertEquals("fingerprint", session.cookie().value("dfid"));
         assertFalse(session.cookie().header().contains("discarded")); assertFalse(session.cookie().header().contains("NickName"));
         assertEquals(1, seen.size());
-        URI uri = seen.getFirst(); assertEquals("https", uri.getScheme()); assertEquals("login-user.kugou.com", uri.getHost());
+        URI uri = seen.get(0); assertEquals("https", uri.getScheme()); assertEquals("login-user.kugou.com", uri.getHost());
         assertEquals("/v1/cross/", uri.getPath()); assertTrue(uri.getQuery().contains("a_id=1014&userid=123&t=fixture&ct=1791500000&"));
         assertTrue(uri.getQuery().contains("callback=&domain=kugou.com&")); assertFalse(uri.toString().contains("discarded"));
     }
@@ -55,7 +55,7 @@ class KugouWebsiteSessionTest {
         };
         var session = new KugouAccountProvider(http, CLOCK).validate(cookie("KugooID=123;t=fixture;a_id=1010"));
         assertEquals("1010", session.cookie().value("appid"));
-        assertTrue(seen.getFirst().getQuery().contains("a_id=1010")); assertTrue(seen.getFirst().getQuery().contains("ct=1791590400"));
+        assertTrue(seen.get(0).getQuery().contains("a_id=1010")); assertTrue(seen.get(0).getQuery().contains("ct=1791590400"));
     }
     @Test void invalidTokenCannotBeAcceptedEvenWithApparentlyValidResponseCookies() {
         for (int code : List.of(20017, 20018)) {

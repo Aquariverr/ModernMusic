@@ -11,7 +11,7 @@ abstract class ThemedSlider extends AbstractSliderButton {
     private float hover;
     private final long[] clock = new long[1];
     ThemedSlider(int x, int y, int width, double value) { super(x, y, width, 28, Component.empty(), value); }
-    void syncValue(double next) { value = Math.clamp(next, 0, 1); updateMessage(); }
+    void syncValue(double next) { value = dev.modernmusic.compat.Java17.clamp(next, 0, 1); updateMessage(); }
     @ParametersAreNonnullByDefault @Override public void renderWidget(GuiGraphics g, int mx, int my, float delta) {
         hover = approach(hover, active && isHoveredOrFocused() ? 1 : 0, clock);
         var font = PlayerTheme.font();

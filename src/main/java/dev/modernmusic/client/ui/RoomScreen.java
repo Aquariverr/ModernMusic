@@ -18,7 +18,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.PlayerFaceRenderer;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.resources.DefaultPlayerSkin;
-import net.minecraft.client.resources.PlayerSkin;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 import static dev.modernmusic.client.ui.PlayerTheme.*;
@@ -94,8 +94,7 @@ public final class RoomScreen extends MusicScreen {
                     g.fill(getX(), getY() - 1, getX() + 1, getY() + font.lineHeight, FIELD_TEXT);
             }
         };
-        musicInput.setBordered(false); musicInput.setTextShadow(false);
-        musicInput.setMaxLength(SongReferenceParser.MAX_INPUT_LENGTH);
+        musicInput.setBordered(false); musicInput.setMaxLength(SongReferenceParser.MAX_INPUT_LENGTH);
         musicInput.setTextColor(FIELD_TEXT); musicInput.setTextColorUneditable(FIELD_HINT);
         musicInput.setTooltip(ThemedTooltips.create(musicInput.getMessage())); musicInput.setValue(draft);
         musicInput.setResponder(value -> {
@@ -151,7 +150,7 @@ public final class RoomScreen extends MusicScreen {
         boolean invite = owner() && !room.isTeamRoom() && !room.isPublicRoom();
         memberBottom = bodyY + bodyHeight - (invite ? tight() ? 41 : 68 : 30);
         memberSlots = Math.max(1, (memberBottom - bodyY - 38) / 36);
-        memberOffset = Math.clamp(memberOffset, 0, Math.max(0, room.members().size() - memberSlots));
+        memberOffset = dev.modernmusic.compat.Java17.clamp(memberOffset, 0, Math.max(0, room.members().size() - memberSlots));
         for (int i = 0; i < memberSlots && memberOffset + i < room.members().size(); i++)
             members.add(addRenderableWidget(new MemberRow(bodyY + 38 + i * 36, room.members().get(memberOffset + i))));
         if (invite) {
@@ -224,7 +223,7 @@ public final class RoomScreen extends MusicScreen {
             lobbyEntries.add(new LobbyEntry(invitation.room(), invitation.epoch(), invitation.name(),
                     "modernmusic.room.saved_invitation", false, tr("modernmusic.room.join"), () -> rooms.join(invitation)));
         }
-        invitationOffset = Math.clamp(invitationOffset, 0, Math.max(0, lobbyEntries.size() - memberSlots));
+        invitationOffset = dev.modernmusic.compat.Java17.clamp(invitationOffset, 0, Math.max(0, lobbyEntries.size() - memberSlots));
         for (int i = 0; i < memberSlots && invitationOffset + i < lobbyEntries.size(); i++) {
             var entry = lobbyEntries.get(invitationOffset + i); int y = bodyY + 38 + i * 40;
             var row = addRenderableWidget(new RoomEntry(memberX + 6, y, memberWidth - (entry.owned() ? 40 : 12), entry));
@@ -315,7 +314,7 @@ public final class RoomScreen extends MusicScreen {
         if (clear == null) return;
         boolean allowed = control();
         int size = room.songs().size(), pages = Math.max(1, (size + queueSlots - 1) / queueSlots);
-        queuePage = Math.clamp(queuePage, 0, pages - 1);
+        queuePage = dev.modernmusic.compat.Java17.clamp(queuePage, 0, pages - 1);
         previousPage.active = queuePage > 0; nextPage.active = queuePage + 1 < pages;
         previousPage.visible = nextPage.visible = pages > 1;
         for (int i = 0; i < songs.size(); i++) {
@@ -359,9 +358,9 @@ public final class RoomScreen extends MusicScreen {
         UUID local = client().player == null ? null : client().player.getUUID();
         return rooms.update().savedRooms().stream().filter(saved -> !saved.isPublicRoom() && saved.owner().equals(local)).count();
     }
-    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g, int x, int y, float delta) {
-        if (client().level == null) renderPanorama(g, delta);
-        renderBlurredBackground(delta); scrim(g, width, height);
+    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g) {
+        if (client().level == null) renderDirtBackground(g);
+        scrim(g, width, height);
         panel(g, left, top, panelWidth, panelHeight, 12); header(g, left, top, panelWidth, musicInput == null ? 40 : 32);
         if (musicInput != null) field(g, left + 12, searchY, searchWidth, 26, 13, musicInput.isFocused());
         card(g, memberX, bodyY, memberWidth, bodyHeight, 10); card(g, queueX, bodyY, queueWidth, bodyHeight, 10);
@@ -452,8 +451,8 @@ public final class RoomScreen extends MusicScreen {
         if (!owner() || room == null || room.canManage(row.member.id())) return;
         closeMenu(); menuMember = row.member.id(); menuWidth = Math.min(202, panelWidth - 24);
         menuHeight = room.isTeamRoom() ? 117 : 143;
-        menuX = Math.clamp(x, left + 8, left + panelWidth - menuWidth - 8);
-        menuY = Math.clamp(y, top + 8, top + panelHeight - menuHeight - 8);
+        menuX = dev.modernmusic.compat.Java17.clamp(x, left + 8, left + panelWidth - menuWidth - 8);
+        menuY = dev.modernmusic.compat.Java17.clamp(y, top + 8, top + panelHeight - menuHeight - 8);
         menuItem("modernmusic.room.requester", Action.REQUESTER, 1, row.member.requester());
         menuItem("modernmusic.room.dj", Action.DJ, 1, row.member.dj());
         menuItem("modernmusic.room.listener", Action.DJ, 0, !row.member.dj() && !row.member.requester());
@@ -621,17 +620,17 @@ public final class RoomScreen extends MusicScreen {
                     .append("\n").append(tr(owner() && !rooms.update().room().canManage(member.id())
                             ? "modernmusic.room.member_hint" : "modernmusic.room.member_view_hint"))));
         }
-        private PlayerSkin skin() {
+        private ResourceLocation skin() {
             var connection = client().getConnection();
             var info = connection == null ? null : connection.getPlayerInfo(member.id());
             // Reuse the game's asynchronous skin cache; querying each frame also picks up a late player-info update.
             if (info != null) {
-                try { return info.getSkin(); }
+                try { return info.getSkinLocation(); }
                 catch (java.util.concurrent.CompletionException | java.util.concurrent.CancellationException unavailable) {
                     // A failed skin download must not prevent the member list from rendering.
                 }
             }
-            return DefaultPlayerSkin.get(member.id());
+            return DefaultPlayerSkin.getDefaultSkin(member.id());
         }
         @Override protected void drawContent(GuiGraphics g, int fg) {
             var room = rooms.update().room(); if (room == null) return;

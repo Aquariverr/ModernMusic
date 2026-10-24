@@ -23,7 +23,7 @@ final class IdeInspectionSmoke {
         if (admin.snapshot() != null || requests.size() != 1)
             throw new AssertionError("Admin must support the initial loading state");
 
-        var request = requests.getFirst();
+        var request = requests.get(0);
         admin.receive(verification(request, "https://music.163.com/st/verify?token=inspection-fixture"));
         screen.tick();
         var openVerification = button(screen, "modernmusic.auth.qr_open_verification");

@@ -30,7 +30,7 @@ final class UploadedTexture extends AbstractTexture {
     }
 
     static ResourceLocation register(String kind, NativeImage[] levels, boolean smooth) {
-        var id = ResourceLocation.fromNamespaceAndPath(ModernMusic.MOD_ID, "dynamic/" + kind + "_" + ++counter);
+        var id = new ResourceLocation(ModernMusic.MOD_ID, "dynamic/" + kind + "_" + ++counter);
         var texture = new UploadedTexture(levels, smooth);
         try {
             Minecraft.getInstance().getTextureManager().register(id, texture);

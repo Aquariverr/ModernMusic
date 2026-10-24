@@ -86,6 +86,48 @@ class RoomProtocolTest {
         assertThrows(IllegalArgumentException.class, () -> new RoomUpdate.SavedRoom(id, epoch, "Saved", owner, 0, 401));
         assertThrows(IllegalArgumentException.class, () -> new RoomUpdate(0, null, List.of(), "", TeamStatus.ABSENT, Collections.nCopies(65, saved), 2));
     }
+    @Test void durationReportsBindAudioToTheCurrentPlaybackAndBoundUntrustedMetadata() {
+        var report = new RoomDurationReport(id, epoch, 7, "42", RoomDurationReport.MAX_DURATION_MS);
+        assertEquals(report, RoomJson.decode(RoomJson.encode(report), RoomDurationReport.class));
+        for (long invalid : List.of(0L, -1L, RoomDurationReport.MAX_DURATION_MS + 1, Long.MAX_VALUE))
+            assertThrows(IllegalArgumentException.class, () -> new RoomDurationReport(id, epoch, 7, "42", invalid));
+        assertThrows(IllegalArgumentException.class, () -> new RoomDurationReport(id, epoch, -1, "42", 100));
+        assertThrows(IllegalArgumentException.class, () -> new RoomDurationReport(id, epoch, 7, "local:local_" + "0".repeat(32), 100));
+        assertThrows(IllegalArgumentException.class, () -> new RoomDurationReport(id, epoch, 7, "invalid", 100));
+    }
+    @Test void maximumPublicUpdateWithWorstEscapingAndLongestIdsFitsBoundedCodec() {
+        String name = "<".repeat(40);
+        String longestSong = "kugou:collection_99_" + "9".repeat(19) + "_" + "9".repeat(19) + "_9";
+        var members = Collections.nCopies(RoomService.MAX_PUBLIC_MEMBERS,
+                new RoomSnapshot.Member(owner, "<".repeat(16), false));
+        var publicRoom = new RoomSnapshot(RoomService.PUBLIC_ROOM_ID, epoch, name, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE,
+                RoomService.SERVER_OWNER, members, Collections.nCopies(400, longestSong), 399, PlaybackMode.SEQUENTIAL,
+                RoomSnapshot.State.PLAYING, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
+        var invitations = Collections.nCopies(RoomService.MAX_ROOMS, new RoomUpdate.Invitation(id, epoch, name));
+        var saved = new ArrayList<>(Collections.nCopies(RoomService.MAX_ROOMS,
+                new RoomUpdate.SavedRoom(id, epoch, name, owner, RoomService.MAX_MEMBERS, 400)));
+        saved.add(new RoomUpdate.SavedRoom(RoomService.PUBLIC_ROOM_ID, epoch, name, RoomService.SERVER_OWNER,
+                RoomService.MAX_PUBLIC_MEMBERS, 400));
+        var update = new RoomUpdate(Long.MAX_VALUE, publicRoom, invitations, "<".repeat(80),
+                new TeamStatus(TeamStatus.State.READY, name), saved, RoomService.MAX_ROOMS);
+        String json = new RoomUpdateEncoder(Long.MAX_VALUE).encode(update);
+        assertTrue(json.length() > 262144, "Exercise the former insufficient codec limit");
+        assertTrue(json.length() <= RoomJson.MAX_UPDATE_LENGTH, () -> "Oversized bounded update: " + json.length());
+        assertTrue(RoomJson.MAX_UPDATE_LENGTH * 3L + 256 < 1024 * 1024, "Keep UTF-8 and framing within custom payload cap");
+        assertEquals(update, RoomJson.decode(json, RoomUpdate.class));
+    }
+    @Test void oversizedPublicStateAndUnboundedNamesAreRejectedBeforeEncoding() {
+        var member = new RoomSnapshot.Member(owner, "Player", false);
+        assertThrows(IllegalArgumentException.class, () -> new RoomSnapshot(RoomService.PUBLIC_ROOM_ID, epoch, "Public", 0, 0, 0,
+                RoomService.SERVER_OWNER, Collections.nCopies(RoomService.MAX_PUBLIC_MEMBERS + 1, member), List.of(), -1,
+                PlaybackMode.SEQUENTIAL, RoomSnapshot.State.STOPPED, 0, 0, 0));
+        assertThrows(IllegalArgumentException.class, () -> new RoomUpdate.SavedRoom(RoomService.PUBLIC_ROOM_ID, epoch, "Public",
+                RoomService.SERVER_OWNER, RoomService.MAX_PUBLIC_MEMBERS + 1, 0));
+        assertThrows(IllegalArgumentException.class, () -> new RoomSnapshot(id, epoch, "Room", 0, 0, 0, owner,
+                List.of(new RoomSnapshot.Member(owner, "x".repeat(17), false)), List.of(), -1,
+                PlaybackMode.SEQUENTIAL, RoomSnapshot.State.STOPPED, 0, 0, 0));
+        assertThrows(IllegalArgumentException.class, () -> new RoomUpdate.Invitation(id, epoch, "x".repeat(41)));
+    }
     @Test void duplicateReorderedAndOldRoomPacketsCannotUndoLeave() {
         RoomReplica replica = new RoomReplica();
         assertTrue(replica.accept(update(1, snapshot(1)))); assertTrue(replica.accept(update(3, snapshot(3))));

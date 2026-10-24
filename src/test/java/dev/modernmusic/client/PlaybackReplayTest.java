@@ -75,7 +75,7 @@ class PlaybackReplayTest {
         try (var fixture = new Fixture()) {
             var player = fixture.player;
             player.add("42"); fixture.awaitLoad(1);
-            PcmAudio original = fixture.output.loaded.getFirst();
+            PcmAudio original = fixture.output.loaded.get(0);
             assertSame(LYRICS, player.lyrics());
             for (int replay = 0; replay < 10; replay++) {
                 player.seek(500);
@@ -85,7 +85,7 @@ class PlaybackReplayTest {
                 assertEquals("modernmusic.status.audio_starting", player.message());
                 assertEquals(0, player.audio().positionMs());
                 assertEquals(AudioOutput.State.PLAYING, player.audio().state());
-                assertSame(original, fixture.output.loaded.getLast());
+                assertSame(original, dev.modernmusic.compat.Java17.last(fixture.output.loaded));
                 assertSame(LYRICS, player.lyrics());
                 fixture.drain(); player.tick(1);
                 assertEquals(PlaybackController.State.PLAYING, player.state());
@@ -133,7 +133,7 @@ class PlaybackReplayTest {
                 invalidate.accept(player);
                 assertEquals(0, player.bufferedBytes());
                 player.play(0); fixture.awaitLoad(2);
-                assertNotSame(fixture.output.loaded.getFirst(), fixture.output.loaded.getLast());
+                assertNotSame(fixture.output.loaded.get(0), dev.modernmusic.compat.Java17.last(fixture.output.loaded));
                 assertEquals(2, fixture.provider.resolves);
                 assertEquals(2, fixture.provider.lyricRequests);
                 assertEquals(2, fixture.downloads.get());

@@ -17,13 +17,12 @@ import net.minecraft.client.*;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.*;
 import net.minecraft.client.renderer.texture.DynamicTexture;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.fml.common.Mod;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.common.NeoForge;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.common.MinecraftForge;
 
 /** Deterministic lifecycle smoke test with generated silent audio and no account or network access. */
-@Mod(value = "modernmusic_smoke", dist = Dist.CLIENT)
 public final class LifecycleSmoke {
     private PlaybackController player;
     private int step, cycle, worlds, frames;
@@ -37,9 +36,10 @@ public final class LifecycleSmoke {
     private long stepDeadline;
     private Thread audioThread;
     public LifecycleSmoke() {
-        if (Boolean.getBoolean("modernmusic.lifecycleSmoke")) NeoForge.EVENT_BUS.addListener(this::tick);
+        if (Boolean.getBoolean("modernmusic.lifecycleSmoke")) MinecraftForge.EVENT_BUS.addListener(this::tick);
     }
-    private void tick(ClientTickEvent.Post event) {
+    private void tick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
         if (step < 0) return;
         Minecraft game = Minecraft.getInstance();
         try {
@@ -52,7 +52,7 @@ public final class LifecycleSmoke {
             if (System.nanoTime() > deadline) throw new IllegalStateException("Lifecycle timeout at " + step);
             if (game.getOverlay() != null) return;
             if (step == 0) {
-                if (game.screen instanceof AccessibilityOnboardingScreen) { game.options.onboardingAccessibilityFinished(); game.setScreen(new TitleScreen()); }
+                if (game.screen instanceof AccessibilityOnboardingScreen) {  game.setScreen(new TitleScreen()); }
                 if (!(game.screen instanceof TitleScreen)) return;
                 if (!game.options.languageCode.equals("zh_cn")) {
                     game.options.languageCode = "zh_cn"; game.getLanguageManager().setSelected("zh_cn"); game.reloadResourcePacks(); return;
@@ -64,7 +64,7 @@ public final class LifecycleSmoke {
                                 net.minecraft.world.Difficulty.PEACEFUL, true, new net.minecraft.world.level.GameRules(), net.minecraft.world.level.WorldDataConfiguration.DEFAULT),
                         new net.minecraft.world.level.levelgen.WorldOptions(0L, false, false),
                         registry -> registry.registryOrThrow(net.minecraft.core.registries.Registries.WORLD_PRESET)
-                                .getHolderOrThrow(net.minecraft.world.level.levelgen.presets.WorldPresets.FLAT).value().createWorldDimensions(), new TitleScreen());
+                                .getHolderOrThrow(net.minecraft.world.level.levelgen.presets.WorldPresets.FLAT).value().createWorldDimensions());
                 frames = 40; step = 1; return;
             }
             if (step == 1) {
@@ -158,7 +158,7 @@ public final class LifecycleSmoke {
                 }
                 case 24 -> {
                     if (player.audio().positionMs() < 40) return;
-                    seedTextures(game); game.level.disconnect(); game.disconnect(new TitleScreen()); game.setScreen(new TitleScreen()); frames = 5; step = 25;
+                    seedTextures(game); game.level.disconnect(); game.clearLevel(new TitleScreen()); game.setScreen(new TitleScreen()); frames = 5; step = 25;
                 }
                 case 25 -> {
                     if (frames-- > 0) return;
@@ -235,9 +235,14 @@ public final class LifecycleSmoke {
     private static java.lang.reflect.Field field(Class<?> type, String name) throws Exception {
         var field = type.getDeclaredField(name); field.setAccessible(true); return field;
     }
-    private void click(String name) {
-        check(!keys.get(name).isUnbound(), "Fixture key was reset: " + name);
-        KeyMapping.click(keys.get(name).getKey());
+    private void click(String name) throws Exception {
+        var key = keys.get(name);
+        check(!key.isUnbound(), "Fixture key was reset: " + name);
+        // Forge's physical-key lookup checks the held modifier and conflict context before
+        // queuing a click. The fixture holds no Ctrl key and deliberately queues clicks while
+        // a text screen is open, so exercise production consumption/draining directly.
+        var clicks = field(KeyMapping.class, "clickCount");
+        clicks.setInt(key, clicks.getInt(key) + 1);
     }
     private static void press(Minecraft game, String key) {
         String label = net.minecraft.network.chat.Component.translatable(key).getString();

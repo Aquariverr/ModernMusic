@@ -65,14 +65,14 @@ public final class AudioBrowserScreen extends MusicScreen {
         localTab = button("modernmusic.audio.local", left + 14, toolsY, 62, toolsHeight, false, () -> switchSource(false));
         serverTab = button("modernmusic.audio.server", left + 82, toolsY, 70, toolsHeight, false, () -> switchSource(true));
         var folder = button("modernmusic.audio.open_folder", left + panelWidth - 138, toolsY, 86, toolsHeight, false,
-                () -> Util.getPlatform().openPath(player.localAudio().directory()));
+                () -> Util.getPlatform().openFile(player.localAudio().directory().toFile()));
         folder.setTooltip(Tooltip.create(Component.translatable("modernmusic.audio.folder_help", player.localAudio().directory().toString())));
         reload = addRenderableWidget(new IconButton(left + panelWidth - 46, toolsY, 32, toolsHeight,
                 Component.translatable("modernmusic.audio.refresh"), Icon.REPEAT, false, false, this::load));
         input = addRenderableWidget(new ThemedEditBox(font, left + 14, top + (compact ? 60 : 68), panelWidth - 28, compact ? 22 : 24,
                 Component.translatable("modernmusic.audio.filter"), Icon.SEARCH));
         input.setMaxLength(256); input.setValue(filter);
-        input.setHint(Component.translatable("modernmusic.audio.filter").withColor(FIELD_HINT));
+        input.setHint(Component.translatable("modernmusic.audio.filter").withStyle(style -> style.withColor(FIELD_HINT)));
         input.setResponder(value -> { filter = value; page = 0; filterTracks(); refresh(); });
         for (int i = 0; i < pageSize; i++) {
             final int index = i;
@@ -135,11 +135,11 @@ public final class AudioBrowserScreen extends MusicScreen {
         String query = filter.strip().toLowerCase(Locale.ROOT);
         filtered = tracks.stream().filter(track -> query.isEmpty() || track.title().toLowerCase(Locale.ROOT).contains(query)
                 || track.artistText().toLowerCase(Locale.ROOT).contains(query)).toList();
-        page = Math.clamp(page, 0, Math.max(0, (filtered.size() - 1) / pageSize));
+        page = dev.modernmusic.compat.Java17.clamp(page, 0, Math.max(0, (filtered.size() - 1) / pageSize));
     }
     private void changePage(int delta) {
         if (busy() || pendingLoad != null) return;
-        page = Math.clamp(page + delta, 0, Math.max(0, (filtered.size() - 1) / pageSize)); refresh();
+        page = dev.modernmusic.compat.Java17.clamp(page + delta, 0, Math.max(0, (filtered.size() - 1) / pageSize)); refresh();
     }
     private void toggle(int row) {
         int index = page * pageSize + row;
@@ -177,7 +177,7 @@ public final class AudioBrowserScreen extends MusicScreen {
                 selected.keySet().retainAll(ids);
                 if (!selectionAfterLoad.isEmpty()) {
                     for (Track added : selectionAfterLoad) if (ids.contains(added.id())) selected.put(added.id(), added);
-                    var first = selectionAfterLoad.getFirst().id();
+                    var first = selectionAfterLoad.get(0).id();
                     for (int i = 0; i < tracks.size(); i++) if (tracks.get(i).id().equals(first)) { page = i / pageSize; break; }
                 }
             } catch (RuntimeException failure) { tracks = List.of(); selected.clear(); notice = failureMessage(failure); }
@@ -276,7 +276,7 @@ public final class AudioBrowserScreen extends MusicScreen {
     private void initDestinations() {
         var destinations = player.searchDestinations();
         int count = Math.max(1, (panelHeight - 100) / 28);
-        destinationPage = Math.clamp(destinationPage, 0, Math.max(0, (destinations.size() - 1) / count));
+        destinationPage = dev.modernmusic.compat.Java17.clamp(destinationPage, 0, Math.max(0, (destinations.size() - 1) / count));
         for (int i = 0; i < count && destinationPage * count + i < destinations.size(); i++) {
             var entry = destinations.get(destinationPage * count + i);
             var item = addRenderableWidget(new IconButton(left + 14, top + 60 + i * 28, panelWidth - 28, 24,
@@ -293,9 +293,9 @@ public final class AudioBrowserScreen extends MusicScreen {
                 Component.translatable("modernmusic.next_page"), Icon.RIGHT, false, true, () -> { destinationPage++; rebuildWidgets(); }));
         back.active = destinationPage > 0; forward.active = (destinationPage + 1) * count < destinations.size();
     }
-    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g, int x, int y, float delta) {
-        if (client().level == null) renderPanorama(g, delta);
-        renderBlurredBackground(delta); scrim(g, width, height);
+    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g) {
+        if (client().level == null) renderDirtBackground(g);
+        scrim(g, width, height);
         panel(g, left, top, panelWidth, panelHeight, 12); header(g, left, top, panelWidth, 32);
         if (!picking) well(g, left + 10, top + resultsY - 2, panelWidth - 20, pageSize * rowHeight + 4, 10);
     }

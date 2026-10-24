@@ -135,9 +135,8 @@ public final class SharedAdminScreen extends MusicScreen {
             } catch (Exception invalid) { localError = "modernmusic.auth.qr_error"; }
         }
     }
-    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g, int x, int y, float partial) {
-        if (client().level == null) renderPanorama(g, partial);
-        renderBlurredBackground(partial);
+    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g) {
+        if (client().level == null) renderDirtBackground(g);
         scrim(g, width, height);
         panel(g, left, top, panelWidth, panelHeight, 12);
         header(g, left, top, panelWidth, 32);

@@ -31,8 +31,8 @@ class PlatformSwitchTest {
             assertEquals(PlaybackController.State.LOADING, player.state());
             player.add("123"); assertEquals(List.of(new SongId(123), new SongId(123, MusicPlatform.QQ)), queue.entries());
             player.search().search("song", 0, 10); assertEquals(1, qq.searches); assertEquals(0, netease.searches);
-            player.play(0); assertEquals(new SongId(123), netease.requested.getLast()); assertTrue(qq.requested.isEmpty());
-            player.play(1); assertEquals(new SongId(123, MusicPlatform.QQ), qq.requested.getLast());
+            player.play(0); assertEquals(new SongId(123), dev.modernmusic.compat.Java17.last(netease.requested)); assertTrue(qq.requested.isEmpty());
+            player.play(1); assertEquals(new SongId(123, MusicPlatform.QQ), dev.modernmusic.compat.Java17.last(qq.requested));
             player.switchPlatform(); assertEquals(2, queue.entries().size()); assertNull(player.search().result());
         }
     }
@@ -41,7 +41,7 @@ class PlatformSwitchTest {
         library.active().queue().restore(List.of(new SongId(123), new SongId(123, MusicPlatform.QQ), new SongId("A".repeat(32), MusicPlatform.KUGOU)), 1, PlaybackMode.REPEAT_ALL);
         try (var store = new QueueStore(file)) { store.save(library.snapshot(List.of())); }
         try (var store = new QueueStore(file)) {
-            var saved = store.load().join().queues().getFirst();
+            var saved = store.load().join().queues().get(0);
             assertEquals(library.active().queue().entries(), saved.songs()); assertEquals(1, saved.selected());
         }
     }
@@ -80,7 +80,7 @@ class PlatformSwitchTest {
         try (var multi = new MultiPlatformProvider(netease, qq)) {
             qq.state(1, null); qq.profile(1, new dev.modernmusic.shared.SharedAccountProfile("QQ server", "https://q.qlogo.cn/fixture.png")); qq.select(true);
             var id = new SongId(123, MusicPlatform.QQ); var future = multi.resolvePlayback(id);
-            var request = sent.getFirst(); assertEquals("qq:123", request.song());
+            var request = sent.get(0); assertEquals("qq:123", request.song());
             multi.select(MusicPlatform.NETEASE);
             qq.receive(request.request(), 1, "qq:123", "https://dl.stream.qqmusic.qq.com/M500fixture.mp3", System.currentTimeMillis() + 60000, null);
             assertEquals(id, future.join().id());
@@ -95,8 +95,8 @@ class PlatformSwitchTest {
             player.switchPlatform(); player.add("123"); player.switchPlatform();
             assertEquals(MusicPlatform.KUGOU, player.platform()); assertSame(queue, player.queue()); assertEquals(stops, output.stops); assertEquals(0, queue.index());
             player.search().search("Song", 0, 10); assertEquals(1, kugou.searches); assertEquals(0, qq.searches);
-            player.play(0); assertEquals(MusicPlatform.NETEASE, netease.requested.getLast().platform());
-            player.play(1); assertEquals(MusicPlatform.QQ, qq.requested.getLast().platform());
+            player.play(0); assertEquals(MusicPlatform.NETEASE, dev.modernmusic.compat.Java17.last(netease.requested).platform());
+            player.play(1); assertEquals(MusicPlatform.QQ, dev.modernmusic.compat.Java17.last(qq.requested).platform());
             player.switchPlatform(); assertEquals(MusicPlatform.NETEASE, player.platform()); assertNull(player.search().result());
         }
         assertEquals(PlayerInputAction.SONG, PlayerInputAction.resolve("A".repeat(32), false, MusicPlatform.KUGOU));
@@ -107,7 +107,7 @@ class PlatformSwitchTest {
         var sent = new ArrayList<SharedPlaybackSource.Request>();
         try (var source = new SharedPlaybackSource(new Provider(), sent::add, () -> {}, java.time.Clock.systemUTC(), MusicPlatform.KUGOU)) {
             source.state(7, null); source.profile(7, new dev.modernmusic.shared.SharedAccountProfile("酷狗共享账号", "https://imge.kugou.com/avatar.jpg")); source.select(true);
-            var id = new SongId("A".repeat(32), MusicPlatform.KUGOU); var future = source.resolvePlayback(id); var request = sent.getFirst();
+            var id = new SongId("A".repeat(32), MusicPlatform.KUGOU); var future = source.resolvePlayback(id); var request = sent.get(0);
             assertEquals(id.toString(), request.song());
             source.receive(request.request(), 7, "kugou:" + "B".repeat(32), "https://fsandroid.tx.kugou.com/song.mp3", System.currentTimeMillis() + 60000, null);
             assertFalse(future.isDone());

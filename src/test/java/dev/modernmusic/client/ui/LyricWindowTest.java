@@ -14,13 +14,13 @@ class LyricWindowTest {
         var rows = LyricWindow.rows(lyrics, 3_000, 2);
         assertEquals(List.of("three", "translation"), rows.stream().map(LyricWindow.Row::text).toList());
         assertTrue(rows.stream().allMatch(LyricWindow.Row::current));
-        assertTrue(rows.getLast().translation());
+        assertTrue(dev.modernmusic.compat.Java17.last(rows).translation());
     }
     @Test void expandedWindowShowsBothSidesAndFollowsSeeking() {
         var rows = LyricWindow.rows(lyrics, 3_000, 5);
         assertEquals(List.of("two", "three", "translation", "four", "five"), rows.stream().map(LyricWindow.Row::text).toList());
-        assertEquals("five", LyricWindow.rows(lyrics, 5_000, 3).getLast().text());
-        assertTrue(LyricWindow.rows(lyrics, 1_000, 3).getFirst().current());
+        assertEquals("five", dev.modernmusic.compat.Java17.last(LyricWindow.rows(lyrics, 5_000, 3)).text());
+        assertTrue(LyricWindow.rows(lyrics, 1_000, 3).get(0).current());
     }
     @Test void PreludeEmptyAndNoSpaceRemainBounded() {
         assertTrue(LyricWindow.rows(lyrics, 0, 3).stream().noneMatch(LyricWindow.Row::current));

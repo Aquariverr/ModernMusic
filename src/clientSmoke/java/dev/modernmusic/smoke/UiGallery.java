@@ -1,5 +1,10 @@
 package dev.modernmusic.smoke;
 
+import com.google.zxing.BinaryBitmap;
+import com.google.zxing.DecodeHintType;
+import com.google.zxing.RGBLuminanceSource;
+import com.google.zxing.common.HybridBinarizer;
+import com.google.zxing.qrcode.QRCodeReader;
 import javax.annotation.ParametersAreNonnullByDefault;
 import dev.modernmusic.ModernMusic;
 import dev.modernmusic.auth.*;
@@ -17,13 +22,12 @@ import java.util.*;
 import java.util.concurrent.*;
 import net.minecraft.client.*;
 import net.minecraft.client.gui.screens.*;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.fml.common.Mod;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.common.NeoForge;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.common.MinecraftForge;
 
 /** Opt-in visual gallery (runUiGallery): every screen at several sizes and GUI scales, fixture data only. */
-@Mod(value = "modernmusic_smoke", dist = Dist.CLIENT)
 public final class UiGallery {
     private static final URI ART = URI.create("https://p1.music.126.net/gallery/cover.jpg");
     private static final URI AVATAR = URI.create("https://p1.music.126.net/gallery/avatar.jpg");
@@ -37,6 +41,7 @@ public final class UiGallery {
     private Path output;
     private final boolean localAudioGallery = "audio".equalsIgnoreCase(System.getenv("MODERN_MUSIC_GALLERY_ONLY"));
     private final boolean audioDropGallery = "audio-drop".equalsIgnoreCase(System.getenv("MODERN_MUSIC_GALLERY_ONLY"));
+    private final boolean qrGallery = "qr".equalsIgnoreCase(System.getenv("MODERN_MUSIC_GALLERY_ONLY"));
     private Runnable shotTick = () -> {};
     private java.util.function.BooleanSupplier shotReady = () -> true;
     private final boolean ae2MenuGallery = "room-ae2".equalsIgnoreCase(System.getenv("MODERN_MUSIC_GALLERY_ONLY"));
@@ -48,10 +53,11 @@ public final class UiGallery {
     private int menuKeyboardSteps, menuLateHover = -1, menuOriginOffset;
 
     public UiGallery() {
-        if (Boolean.getBoolean("modernmusic.uiGallery")) NeoForge.EVENT_BUS.addListener(this::tick);
+        if (Boolean.getBoolean("modernmusic.uiGallery")) MinecraftForge.EVENT_BUS.addListener(this::tick);
     }
 
-    private void tick(ClientTickEvent.Post event) {
+    private void tick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
         if (step < 0) return;
         var game = Minecraft.getInstance();
         try {
@@ -65,7 +71,7 @@ public final class UiGallery {
             if (game.getOverlay() != null || frames-- > 0) return;
             switch (step) {
                 case 0 -> {
-                    if (game.screen instanceof AccessibilityOnboardingScreen) { game.options.onboardingAccessibilityFinished(); game.setScreen(new TitleScreen()); }
+                    if (game.screen instanceof AccessibilityOnboardingScreen) {  game.setScreen(new TitleScreen()); }
                     if (!(game.screen instanceof TitleScreen)) return;
                     if (!game.options.languageCode.equals("zh_cn")) {
                         game.options.languageCode = "zh_cn"; game.getLanguageManager().setSelected("zh_cn"); game.reloadResourcePacks(); return;
@@ -79,7 +85,7 @@ public final class UiGallery {
                                     net.minecraft.world.Difficulty.PEACEFUL, true, new net.minecraft.world.level.GameRules(), net.minecraft.world.level.WorldDataConfiguration.DEFAULT),
                             new net.minecraft.world.level.levelgen.WorldOptions(0L, false, false),
                             registry -> registry.registryOrThrow(net.minecraft.core.registries.Registries.WORLD_PRESET)
-                                    .getHolderOrThrow(net.minecraft.world.level.levelgen.presets.WorldPresets.FLAT).value().createWorldDimensions(), new TitleScreen());
+                                    .getHolderOrThrow(net.minecraft.world.level.levelgen.presets.WorldPresets.FLAT).value().createWorldDimensions());
                     frames = 40; step = 1;
                 }
                 case 1 -> {
@@ -318,6 +324,7 @@ public final class UiGallery {
         });
         add("waveform-empty", 1280, 800, 2, () -> { player.clear(); playerScreen.run(); });
         add("ide-admin-state-reset", 680, 480, 2, () -> IdeInspectionSmoke.verify(game));
+        if (qrGallery) shots.removeIf(shot -> !shot.name().startsWith("qr-login-") && !shot.name().equals("account-qr.png"));
         // MODERNMUSIC_GALLERY_ONLY=theme-create,theme-ae2 keeps just the shots whose names contain one of the parts.
         String only = System.getenv("MODERNMUSIC_GALLERY_ONLY");
         if (only != null && !only.isBlank()) {
@@ -573,7 +580,7 @@ public final class UiGallery {
             if (state.endsWith("destinations")) { clickKey(game, "modernmusic.search.select_page"); clickField(game, "destinationButton"); }
             else if (!state.equals("empty") && !state.equals("offline")) {
                 var rows = (List<?>) field(AudioBrowserScreen.class, "rows").get(screen);
-                clickWidget(game, (net.minecraft.client.gui.components.AbstractWidget) rows.getFirst());
+                clickWidget(game, (net.minecraft.client.gui.components.AbstractWidget) rows.get(0));
                 if (state.startsWith("upload")) clickKey(game, "modernmusic.audio.upload");
             }
         } catch (Exception failure) { throw new IllegalStateException("Audio browser " + state, failure); }
@@ -808,10 +815,10 @@ public final class UiGallery {
             throw new IllegalStateException("Menu did not switch input mode correctly in " + name);
         if (name.contains("-keyboard-requester")) {
             var screen = (MusicScreen) game.screen;
-            var requester = (net.minecraft.client.gui.components.AbstractWidget) rows.getFirst();
+            var requester = (net.minecraft.client.gui.components.AbstractWidget) rows.get(0);
             double scale = screen.toGuiCoordinate(1) * game.getWindow().getGuiScale();
             int y = (int) Math.floor((requester.getY() + requester.getHeight() - 5) * scale);
-            int left = (int) Math.ceil((requester.getX() + 4) * scale), right = (int) Math.floor((requester.getRight() - 4) * scale);
+            int left = (int) Math.ceil((requester.getX() + 4) * scale), right = (int) Math.floor((SmokeCompat.right(requester) - 4) * scale);
             try (var frame = Screenshot.takeScreenshot(game.getMainRenderTarget())) {
                 int color = frame.getPixelRGBA(left, y);
                 for (int x = left + 1; x < right; x++) if (frame.getPixelRGBA(x, y) != color)
@@ -943,7 +950,7 @@ public final class UiGallery {
                     change.equals("epoch") || change.equals("room") ? UUID.randomUUID() : previous.epoch(),
                     previous.name(), previous.revision() + 1, previous.queueRevision() + (change.equals("queue") ? 1 : 0),
                     previous.playbackRevision(), change.equals("permission") ? new UUID(7, 7) : previous.owner(), members,
-                    change.equals("queue") ? previous.songs().reversed() : previous.songs(), previous.index(), previous.mode(),
+                    change.equals("queue") ? SmokeCompat.reversed(previous.songs()) : previous.songs(), previous.index(), previous.mode(),
                     previous.state(), previous.positionMs(), previous.anchorMs(), previous.durationMs(), previous.teamId());
             field(RoomClient.class, "update").set(rooms, new RoomUpdate(update.sequence() + 1, next, update.invitations(), "",
                     update.team(), update.savedRooms(), update.roomLimit()));
@@ -1058,11 +1065,11 @@ public final class UiGallery {
                 for (String control : List.of("inputType", "musicInput", "importButton", "search"))
                     bar.add((net.minecraft.client.gui.components.AbstractWidget) field(RoomScreen.class, control).get(screen));
                 for (int i = 0; i < bar.size(); i++) {
-                    if (bar.get(i).getBottom() > field(RoomScreen.class, "bodyY").getInt(screen))
+                    if (SmokeCompat.bottom(bar.get(i)) > field(RoomScreen.class, "bodyY").getInt(screen))
                         throw new IllegalStateException("Inline input overlaps the member/queue panels in " + name);
                     for (int j = i + 1; j < bar.size(); j++) {
                         var a = bar.get(i); var b = bar.get(j);
-                        if (a.getX() < b.getRight() && a.getRight() > b.getX() && a.getY() < b.getBottom() && a.getBottom() > b.getY())
+                        if (a.getX() < SmokeCompat.right(b) && SmokeCompat.right(a) > b.getX() && a.getY() < SmokeCompat.bottom(b) && SmokeCompat.bottom(a) > b.getY())
                             throw new IllegalStateException("Inline input controls overlap in " + name);
                     }
                 }
@@ -1077,13 +1084,13 @@ public final class UiGallery {
             verifyInlineSearch(game, RoomClient.instance().update().room());
         }
         if (player.library().active().queue().entries().size() != 12
-                || player.library().active().queue().entries().getFirst().value() != 42)
+                || player.library().active().queue().entries().get(0).value() != 42)
             throw new IllegalStateException("Room management changed the personal queue");
     }
 
     /** Targeted room fixtures: run with MODERN_MUSIC_GALLERY_ONLY=room (no live provider/account data). */
     private final UUID avatarRemote = new UUID(7, 7), avatarFailed = new UUID(8, 8), avatarOffline = new UUID(9, 9);
-    private final Map<UUID, net.minecraft.client.resources.PlayerSkin> avatarSkins = new HashMap<>();
+    private final Map<UUID, net.minecraft.resources.ResourceLocation> avatarSkins = new HashMap<>();
     private boolean avatarTransitioned;
 
     /** Production PlayerInfo lookup and vanilla face/hat drawing, backed exclusively by local textures. */
@@ -1102,7 +1109,7 @@ public final class UiGallery {
             roomAvatarFixture(game, HudSettings.Theme.ADAPTIVE);
             try {
                 avatarInfoMap(game).remove(avatarRemote);
-                assertAvatarLookup(game, avatarRemote, net.minecraft.client.resources.DefaultPlayerSkin.get(avatarRemote));
+                assertAvatarLookup(game, avatarRemote, net.minecraft.client.resources.DefaultPlayerSkin.getDefaultSkin(avatarRemote));
                 avatarTransitioned = false;
                 shotTick = () -> {
                     if (avatarTransitioned || frames > 6) return;
@@ -1120,14 +1127,14 @@ public final class UiGallery {
                 try {
                     assertAvatarLookup(game, avatarRemote, avatarSkins.get(avatarRemote));
                     avatarInfoMap(game).remove(avatarRemote);
-                    assertAvatarLookup(game, avatarRemote, net.minecraft.client.resources.DefaultPlayerSkin.get(avatarRemote)); avatarTransitioned = true;
+                    assertAvatarLookup(game, avatarRemote, net.minecraft.client.resources.DefaultPlayerSkin.getDefaultSkin(avatarRemote)); avatarTransitioned = true;
                 } catch (Exception failure) { throw new IllegalStateException("Offline avatar did not fall back", failure); }
             };
         });
         add("room-avatars-adaptive-menu", 680, 480, 2, () -> { roomAvatarFixture(game, HudSettings.Theme.ADAPTIVE); roomMenu(game, true); });
         add("room-avatars-create-menu-narrow", 420, 360, 2, () -> { roomAvatarFixture(game, HudSettings.Theme.CREATE); roomMenu(game, true); });
     }
-    private net.minecraft.client.resources.PlayerSkin avatarSkin(Minecraft game, String name, boolean guest) {
+    private net.minecraft.resources.ResourceLocation avatarSkin(Minecraft game, String name, boolean guest) {
         var pixels = new com.mojang.blaze3d.platform.NativeImage(64, 64, true);
         for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++) pixels.setPixelRGBA(x, y, 0);
         for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) {
@@ -1141,16 +1148,16 @@ public final class UiGallery {
             pixels.setPixelRGBA(40 + x, 8 + y, abgr(hat));
         }
         var texture = game.getTextureManager().register("room-avatar-" + name, new net.minecraft.client.renderer.texture.DynamicTexture(pixels));
-        return new net.minecraft.client.resources.PlayerSkin(texture, null, null, null,
-                net.minecraft.client.resources.PlayerSkin.Model.WIDE, true);
+        return texture;
     }
     private static int abgr(int argb) { return argb & 0xFF00FF00 | (argb & 255) << 16 | argb >>> 16 & 255; }
     @SuppressWarnings("unchecked") private Map<UUID, net.minecraft.client.multiplayer.PlayerInfo> avatarInfoMap(Minecraft game) throws Exception {
         return (Map<UUID, net.minecraft.client.multiplayer.PlayerInfo>) field(net.minecraft.client.multiplayer.ClientPacketListener.class, "playerInfoMap").get(game.getConnection());
     }
-    private void installAvatarInfo(Minecraft game, UUID id, String name, net.minecraft.client.resources.PlayerSkin skin) throws Exception {
-        var info = new net.minecraft.client.multiplayer.PlayerInfo(new com.mojang.authlib.GameProfile(id, name), false);
-        field(net.minecraft.client.multiplayer.PlayerInfo.class, "skinLookup").set(info, (java.util.function.Supplier<net.minecraft.client.resources.PlayerSkin>) () -> skin);
+    private void installAvatarInfo(Minecraft game, UUID id, String name, net.minecraft.resources.ResourceLocation skin) throws Exception {
+        var info = new net.minecraft.client.multiplayer.PlayerInfo(new com.mojang.authlib.GameProfile(id, name), false) {
+            @Override public net.minecraft.resources.ResourceLocation getSkinLocation() { return skin; }
+        };
         avatarInfoMap(game).put(id, info);
     }
     private void roomAvatarFixture(Minecraft game, HudSettings.Theme style) {
@@ -1158,11 +1165,11 @@ public final class UiGallery {
             theme(game, style);
             installAvatarInfo(game, game.player.getUUID(), game.player.getGameProfile().getName(), avatarSkins.get(game.player.getUUID()));
             installAvatarInfo(game, avatarRemote, "GalleryGuest", avatarSkins.get(avatarRemote));
-            var failed = new net.minecraft.client.multiplayer.PlayerInfo(new com.mojang.authlib.GameProfile(avatarFailed, "GalleryFailed"), false);
-            field(net.minecraft.client.multiplayer.PlayerInfo.class, "skinLookup").set(failed,
-                    (java.util.function.Supplier<net.minecraft.client.resources.PlayerSkin>) () -> {
-                        throw new CompletionException(new java.io.IOException("Synthetic skin lookup failure"));
-                    });
+            var failed = new net.minecraft.client.multiplayer.PlayerInfo(new com.mojang.authlib.GameProfile(avatarFailed, "GalleryFailed"), false) {
+                @Override public net.minecraft.resources.ResourceLocation getSkinLocation() {
+                    throw new CompletionException(new java.io.IOException("Synthetic skin lookup failure"));
+                }
+            };
             avatarInfoMap(game).put(avatarFailed, failed);
             avatarInfoMap(game).remove(avatarOffline);
             roomFixture(game, "owner");
@@ -1175,7 +1182,7 @@ public final class UiGallery {
         }
         throw new AssertionError("Expected avatar member is not visible: " + memberId);
     }
-    private void assertAvatarLookup(Minecraft game, UUID member, net.minecraft.client.resources.PlayerSkin expected) throws Exception {
+    private void assertAvatarLookup(Minecraft game, UUID member, net.minecraft.resources.ResourceLocation expected) throws Exception {
         var row = avatarRow(game, member); var lookup = row.getClass().getDeclaredMethod("skin"); lookup.setAccessible(true);
         if (!expected.equals(lookup.invoke(row))) throw new AssertionError("Member avatar does not match PlayerInfo/default UUID: " + member);
     }
@@ -1186,15 +1193,15 @@ public final class UiGallery {
         for (var child : screen.children()) if (child.getClass().getSimpleName().equals("MemberRow")) {
             var member = (RoomSnapshot.Member) field(child.getClass(), "member").get(child);
             var info = game.getConnection().getPlayerInfo(member.id());
-            var expected = info != null && !member.id().equals(avatarFailed) ? info.getSkin()
-                    : net.minecraft.client.resources.DefaultPlayerSkin.get(member.id());
+            var expected = info != null && !member.id().equals(avatarFailed) ? info.getSkinLocation()
+                    : net.minecraft.client.resources.DefaultPlayerSkin.getDefaultSkin(member.id());
             assertAvatarLookup(game, member.id(), expected); verified++;
         }
         if (verified == 0) throw new AssertionError("No member avatars rendered");
         if (name.contains("wide") || name.contains("late-info") || name.contains("offline")) {
             assertAvatarLookup(game, game.player.getUUID(), avatarSkins.get(game.player.getUUID()));
-            assertAvatarLookup(game, avatarFailed, net.minecraft.client.resources.DefaultPlayerSkin.get(avatarFailed));
-            assertAvatarLookup(game, avatarOffline, net.minecraft.client.resources.DefaultPlayerSkin.get(avatarOffline));
+            assertAvatarLookup(game, avatarFailed, net.minecraft.client.resources.DefaultPlayerSkin.getDefaultSkin(avatarFailed));
+            assertAvatarLookup(game, avatarOffline, net.minecraft.client.resources.DefaultPlayerSkin.getDefaultSkin(avatarOffline));
         }
         if (name.contains("menu")) {
             UUID member = (UUID) field(RoomScreen.class, "menuMember").get(screen);
@@ -1336,10 +1343,10 @@ public final class UiGallery {
             var rooms = RoomClient.instance();
             var previous = rooms.update().room();
             var rows = (List<?>) field(RoomScreen.class, remove ? "removes" : "songs").get(screen);
-            var oldTarget = (net.minecraft.client.gui.components.AbstractWidget) rows.getFirst();
+            var oldTarget = (net.minecraft.client.gui.components.AbstractWidget) rows.get(0);
             double x = screen.toGuiCoordinate(oldTarget.getX() + oldTarget.getWidth() / 2.0);
             double y = screen.toGuiCoordinate(oldTarget.getY() + oldTarget.getHeight() / 2.0);
-            var changed = change.equals("shrink") ? previous.songs().subList(1, 4) : previous.songs().reversed();
+            var changed = change.equals("shrink") ? previous.songs().subList(1, 4) : SmokeCompat.reversed(previous.songs());
             var snapshot = new RoomSnapshot(previous.id(), previous.epoch(), previous.name(), previous.revision() + 1,
                     previous.queueRevision() + 1, previous.playbackRevision(), previous.owner(), previous.members(), changed, 0,
                     previous.mode(), previous.state(), previous.positionMs(), previous.anchorMs(), previous.durationMs(), previous.teamId());
@@ -1366,14 +1373,14 @@ public final class UiGallery {
             var members = screen.children().stream().filter(child -> child.getClass().getSimpleName().equals("MemberRow"))
                     .map(net.minecraft.client.gui.components.AbstractWidget.class::cast).toList();
             if (members.isEmpty()) throw new IllegalStateException("Room member list is empty");
-            if (members.size() == 1 && ((RoomSnapshot.Member) field(members.getFirst().getClass(), "member").get(members.getFirst()))
+            if (members.size() == 1 && ((RoomSnapshot.Member) field(members.get(0).getClass(), "member").get(members.get(0)))
                     .id().equals(RoomClient.instance().update().room().owner())) {
-                screen.mouseScrolled(screen.toGuiCoordinate(members.getFirst().getX() + 20),
-                        screen.toGuiCoordinate(members.getFirst().getY() + 8), 0, -1);
+                screen.mouseScrolled(screen.toGuiCoordinate(members.get(0).getX() + 20),
+                        screen.toGuiCoordinate(members.get(0).getY() + 8), -1);
                 members = screen.children().stream().filter(child -> child.getClass().getSimpleName().equals("MemberRow"))
                         .map(net.minecraft.client.gui.components.AbstractWidget.class::cast).toList();
             }
-            var member = members.size() > 1 ? members.get(1) : members.getFirst();
+            var member = members.size() > 1 ? members.get(1) : members.get(0);
             screen.mouseClicked(screen.toGuiCoordinate(member.getX() + 20 + menuOriginOffset), screen.toGuiCoordinate(member.getY() + member.getHeight() / 2.0), 1);
             if ((field(RoomScreen.class, "menuMember").get(screen) != null) != expected)
                 throw new IllegalStateException("Incorrect owner right-click permission");
@@ -1394,9 +1401,9 @@ public final class UiGallery {
                     double y = screen.toGuiCoordinate(field(RoomScreen.class, "bodyY").getInt(screen) + 46);
                     double x = screen.toGuiCoordinate(field(RoomScreen.class, pane + "X").getInt(screen) + 30);
                     String offset = pane.equals("member") ? "memberOffset" : "queuePage";
-                    if (!screen.mouseScrolled(x, y, 0, -1) || field(RoomScreen.class, offset).getInt(screen) == 0)
+                    if (!screen.mouseScrolled(x, y, -1) || field(RoomScreen.class, offset).getInt(screen) == 0)
                         throw new IllegalStateException("Scaled " + pane + " list did not scroll in " + name);
-                    screen.mouseScrolled(x, y, 0, 1);
+                    screen.mouseScrolled(x, y, 1);
                 }
             }
             if (!name.startsWith("room-owner-menu") && field(RoomScreen.class, "menuMember").get(screen) != null)
@@ -1413,7 +1420,7 @@ public final class UiGallery {
             }
         } else if (screen instanceof PlayerScreen) {
             var rows = (List<?>) field(PlayerScreen.class, "rows").get(screen);
-            if (rows.isEmpty() || !field(rows.getFirst().getClass(), "song").get(rows.getFirst()).equals(track(42).title()))
+            if (rows.isEmpty() || !field(rows.get(0).getClass(), "song").get(rows.get(0)).equals(track(42).title()))
                 throw new IllegalStateException("Main UI replaced the personal queue with room songs");
             var groupRows = (List<?>) field(PlayerScreen.class, "groupRows").get(screen);
             if (groupRows.size() != rows.size()) throw new IllegalStateException("A personal row has no group-add button");
@@ -1424,13 +1431,13 @@ public final class UiGallery {
             }
         }
         if (player.library().active().queue().entries().size() != 12
-                || player.library().active().queue().entries().getFirst().value() != 42)
+                || player.library().active().queue().entries().get(0).value() != 42)
             throw new IllegalStateException("Room fixture changed the personal queue");
     }
     /** Just the HUD over the world, drawn from settings other than the client's own. */
     private Screen hudOnly(HudSettings settings) {
         return new Screen(net.minecraft.network.chat.Component.empty()) {
-            @ParametersAreNonnullByDefault @Override public void renderBackground(net.minecraft.client.gui.GuiGraphics g, int x, int y, float delta) {}
+            @ParametersAreNonnullByDefault @Override public void renderBackground(net.minecraft.client.gui.GuiGraphics g) {}
             @ParametersAreNonnullByDefault @Override public void render(net.minecraft.client.gui.GuiGraphics g, int x, int y, float delta) { MusicHud.render(g, player, settings, width, height, true); }
         };
     }
@@ -1573,9 +1580,9 @@ public final class UiGallery {
         player.volume(savedVolume);
         double queueX = screen.toGuiCoordinate(field(PlayerScreen.class, "queueX").getInt(screen) + 40);
         double queueY = screen.toGuiCoordinate(field(PlayerScreen.class, "bodyY").getInt(screen) + 50);
-        if (!screen.mouseScrolled(queueX, queueY, 0, -1) || field(PlayerScreen.class, "page").getInt(screen) != 1)
+        if (!screen.mouseScrolled(queueX, queueY, -1) || field(PlayerScreen.class, "page").getInt(screen) != 1)
             throw new IllegalStateException("Scaled queue scroll missed");
-        screen.mouseScrolled(queueX, queueY, 0, 1);
+        screen.mouseScrolled(queueX, queueY, 1);
         screen.setFocused(input);
     }
 
@@ -1594,10 +1601,27 @@ public final class UiGallery {
         if (name.startsWith("scaling-")) verifyPlayerScale(game);
         if (game.screen instanceof MusicScreen screen) {
             for (var child : screen.children()) if (child instanceof net.minecraft.client.gui.components.AbstractWidget widget && widget.visible
-                    && (widget.getX() < 0 || widget.getY() < 0 || widget.getRight() > screen.width || widget.getBottom() > screen.height))
+                    && (widget.getX() < 0 || widget.getY() < 0 || SmokeCompat.right(widget) > screen.width || SmokeCompat.bottom(widget) > screen.height))
                 throw new IllegalStateException("Widget outside scaled viewport in " + name);
         }
-        try (var image = Screenshot.takeScreenshot(game.getMainRenderTarget())) { image.writeToFile(output.resolve(name)); }
+        try (var image = Screenshot.takeScreenshot(game.getMainRenderTarget())) {
+            image.writeToFile(output.resolve(name));
+            if (qrGallery && !name.contains("tabs")) {
+                var account = (AccountController) field(AccountScreen.class, "account").get(game.screen);
+                if (account.qr() == null || field(AccountScreen.class, "matrix").get(game.screen) == null)
+                    throw new AssertionError("Rendered QR image missing in " + name);
+                int[] pixels = new int[image.getWidth() * image.getHeight()];
+                for (int y = 0; y < image.getHeight(); y++) for (int x = 0; x < image.getWidth(); x++) {
+                    int abgr = image.getPixelRGBA(x, y);
+                    pixels[y * image.getWidth() + x] = abgr & 0xFF00FF00 | (abgr & 255) << 16 | (abgr >>> 16 & 255);
+                }
+                var bitmap = new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(image.getWidth(), image.getHeight(), pixels)));
+                var decoded = new QRCodeReader().decode(bitmap, Map.of(DecodeHintType.TRY_HARDER, true));
+                if (!account.qr().content().equals(decoded.getText()))
+                    throw new AssertionError("Rendered QR pixels did not decode to fixture content in " + name);
+                ModernMusic.LOGGER.info("QR screenshot decoded successfully: {}", name);
+            }
+        }
     }
     private void finish(Minecraft game, String result) {
         step = -1;

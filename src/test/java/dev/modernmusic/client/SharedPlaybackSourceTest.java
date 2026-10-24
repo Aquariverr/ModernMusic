@@ -90,14 +90,14 @@ class SharedPlaybackSourceTest {
         source.state(1, null); respond(1, "https://m1.music.126.net/old"); assertFalse(source.selected());
     }
     @Test void wrongSongAndWrongGenerationCannotCompleteRequest() {
-        ready(); var future = source.resolvePlayback(new SongId(1)); var req = sent.getFirst();
+        ready(); var future = source.resolvePlayback(new SongId(1)); var req = sent.get(0);
         source.receive(req.request(), 1, "2", "https://m1.music.126.net/wrong", clock.instant().plusSeconds(60).toEpochMilli(), null);
         source.receive(req.request(), 2, "1", "https://m1.music.126.net/wrong", clock.instant().plusSeconds(60).toEpochMilli(), null);
         assertFalse(future.isDone()); respond(0, "https://m1.music.126.net/right"); assertEquals(new SongId(1), future.join().id());
     }
     @Test void validatesReturnedCdnUrlsAndDeadlines() {
         ready(); var first = source.resolvePlayback(new SongId(1)); respond(0, "https://localhost/secret"); error(MusicError.INVALID_RESPONSE, first);
-        var second = source.resolvePlayback(new SongId(1)); var req = sent.getLast();
+        var second = source.resolvePlayback(new SongId(1)); var req = dev.modernmusic.compat.Java17.last(sent);
         source.receive(req.request(), 1, "1", "https://m1.music.126.net/song", clock.millis() - 1, null); error(MusicError.INVALID_RESPONSE, second);
     }
     @Test void heartbeatLossStopsPlaybackAndPendingRequests() {
@@ -106,7 +106,7 @@ class SharedPlaybackSourceTest {
         source.state(1, null); assertTrue(source.available()); assertEquals(3, changes);
     }
     @Test void requestTimeoutAndRefreshAreExplicitAndBounded() {
-        ready(); var first = source.refreshPlayback(new SongId(1)); assertTrue(sent.getFirst().refresh());
+        ready(); var first = source.refreshPlayback(new SongId(1)); assertTrue(sent.get(0).refresh());
         source.resolvePlayback(new SongId(2)); error(MusicError.RATE_LIMITED, source.resolvePlayback(new SongId(3)));
         clock.value = clock.value.plusSeconds(26); source.state(1, null); source.tick(); error(MusicError.NETWORK_ERROR, first);
         assertFalse(source.resolvePlayback(new SongId(3)).isDone());
@@ -148,5 +148,66 @@ class SharedPlaybackSourceTest {
         restored.disconnect(); restored.state(1, null); assertFalse(restored.selected());
         remembered.set(true); restored.state(1, null); assertFalse(restored.selected());
         restored.disconnect(); restored.state(1, null); assertTrue(restored.selected());
+    }
+
+    void reject(int index, MusicError failure) {
+        var request = sent.get(index);
+        source.receive(request.request(), request.generation(), request.song(), "", 0, failure);
+    }
+    void advance(long millis) {
+        clock.value = clock.value.plusMillis(millis); source.state(1, null); source.tick();
+    }
+    @Test void rateLimitBacksOffWithoutFailingPlaybackAndIgnoresOldReplies() {
+        ready(); var future = source.resolvePlayback(new SongId(1));
+        reject(0, MusicError.RATE_LIMITED); assertFalse(future.isDone());
+        advance(1_999); assertEquals(1, sent.size());
+        advance(502); assertEquals(2, sent.size());
+        assertNotEquals(sent.get(0).request(), sent.get(1).request());
+        respond(0, "https://m1.music.126.net/stale"); assertFalse(future.isDone());
+        respond(1, "https://m1.music.126.net/recovered");
+        assertEquals("/recovered", future.join().uri().getPath()); assertEquals(0, personalResolves);
+    }
+    @Test void retriesPreserveRefreshSemanticsAndPendingRequestLimit() {
+        ready(); var first = source.refreshPlayback(new SongId(1)); reject(0, MusicError.RATE_LIMITED);
+        source.resolvePlayback(new SongId(2));
+        error(MusicError.RATE_LIMITED, source.resolvePlayback(new SongId(3)));
+        advance(2_501); assertTrue(sent.get(2).refresh());
+        respond(2, "https://m1.music.126.net/fresh"); assertEquals(new SongId(1), first.join().id());
+    }
+    @Test void sustainedRateLimitHasBoundedAttemptsAndOriginalTotalDeadline() {
+        ready(); var future = source.resolvePlayback(new SongId(1)); int rejected = 0;
+        for (int i = 0; i < 500 && !future.isDone(); i++) {
+            while (rejected < sent.size()) reject(rejected++, MusicError.RATE_LIMITED);
+            advance(50);
+        }
+        error(MusicError.RATE_LIMITED, future);
+        assertEquals(5, sent.size());
+        assertTrue(clock.millis() - Instant.parse("2026-10-08T00:00:00Z").toEpochMilli() <= 25_000);
+    }
+    @Test void cancellationFreesBackoffSlotAndPreventsRetry() {
+        ready(); var first = source.resolvePlayback(new SongId(1)); reject(0, MusicError.RATE_LIMITED);
+        first.cancel(true);
+        var second = source.resolvePlayback(new SongId(2)); var third = source.resolvePlayback(new SongId(3));
+        assertFalse(second.isDone()); assertFalse(third.isDone());
+        advance(3_000); assertEquals(3, sent.size()); assertTrue(first.isCancelled());
+    }
+    @Test void permissionOrSessionChangeCancelsScheduledRetries() {
+        ready(); var future = source.resolvePlayback(new SongId(1)); reject(0, MusicError.RATE_LIMITED);
+        source.state(2, MusicError.SHARED_FORBIDDEN); error(MusicError.SHARED_FORBIDDEN, future);
+        clock.value = clock.value.plusSeconds(3); source.tick(); assertEquals(1, sent.size());
+        source.state(3, null); var replaced = source.resolvePlayback(new SongId(2)); reject(1, MusicError.RATE_LIMITED);
+        source.state(4, null); error(MusicError.SHARED_EXPIRED, replaced);
+        clock.value = clock.value.plusSeconds(3); source.tick(); assertEquals(2, sent.size());
+    }
+    @Test void nonRateFailureRemainsTerminalAndLateRateLimitCannotExtendTimeout() {
+        ready(); var denied = source.resolvePlayback(new SongId(1)); reject(0, MusicError.UNAVAILABLE);
+        error(MusicError.UNAVAILABLE, denied); advance(3_000); assertEquals(1, sent.size());
+        var late = source.resolvePlayback(new SongId(2)); advance(24_000); reject(1, MusicError.RATE_LIMITED);
+        error(MusicError.RATE_LIMITED, late); advance(3_000); assertEquals(2, sent.size());
+    }
+    @Test void responseAfterTotalDeadlineCannotWinBeforeTheNextTick() {
+        ready(); var future = source.resolvePlayback(new SongId(1));
+        clock.value = clock.value.plusMillis(25_001); source.state(1, null);
+        respond(0, "https://m1.music.126.net/too-late"); error(MusicError.NETWORK_ERROR, future);
     }
 }

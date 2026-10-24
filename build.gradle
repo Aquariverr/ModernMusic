@@ -1,33 +1,108 @@
-import groovy.json.JsonOutput
-import java.security.MessageDigest
-import java.time.Instant
 import java.util.zip.ZipFile
-import net.neoforged.moddevgradle.dsl.ModModel
-import net.neoforged.moddevgradle.dsl.RunModel
 
 plugins {
     id 'java-library'
-    id 'net.neoforged.moddev' version '2.0.148'
     id 'idea'
+    id 'net.minecraftforge.gradle' version '6.0.54'
 }
-
-def gradleProviders = providers
-String musicModId = gradleProviders.gradleProperty('mod_id').get()
 
 version = mod_version
 group = mod_group_id
 base.archivesName = mod_id
-// Keep automated paired clients separate from IDE-generated run arguments and classpaths.
-def auditBaseline = gradleProviders.gradleProperty('auditBaseline').getOrElse('false').toBoolean()
-if (auditBaseline) {
-    layout.buildDirectory = layout.projectDirectory.dir('build/performance-before-runtime')
-} else if (gradleProviders.gradleProperty('isolatedSmokeBuild').getOrElse('false').toBoolean()) {
-    layout.buildDirectory = layout.projectDirectory.dir('build/paired-smoke')
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(17)
+    withSourcesJar()
 }
 
-java {
-    toolchain.languageVersion = JavaLanguageVersion.of(21)
-    withSourcesJar()
+sourceSets {
+    clientSmoke {
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
+    }
+    optionalServerSmoke {
+        compileClasspath += sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.runtimeClasspath
+    }
+}
+
+minecraft {
+    mappings channel: 'official', version: minecraft_version
+    copyIdeResources = true
+    accessTransformer = file('src/main/resources/META-INF/accesstransformer.cfg')
+    runs {
+        configureEach {
+            workingDirectory project.file("runs/${name}")
+            jvmArgs '-Xms256m', '-Xmx2G'
+            property 'forge.logging.console.level', 'info'
+            if (providers.gradleProperty('ftbTeams').getOrElse('false').toBoolean()) {
+                property 'mixin.env.remapRefMap', 'true'
+                property 'mixin.env.refMapRemappingFile', file('build/createSrgToMcp/output.srg').absolutePath
+            }
+            mods { modernmusic { source sourceSets.main } }
+        }
+        client {}
+        server { args '--nogui' }
+        clientSmoke {
+            parent runs.client
+            property 'modernmusic.smokeHidden', providers.gradleProperty('smokeHidden').getOrElse('true')
+            mods { modernmusic_smoke { source sourceSets.clientSmoke } }
+        }
+        uiGallery {
+            parent runs.clientSmoke
+            property 'modernmusic.uiGallery', 'true'
+        }
+        fontSmoke {
+            parent runs.clientSmoke
+            property 'modernmusic.fontSmoke', 'true'
+        }
+        searchSmoke {
+            parent runs.clientSmoke
+            property 'modernmusic.searchSmoke', 'true'
+        }
+        lifecycleSmoke {
+            parent runs.clientSmoke
+            property 'modernmusic.lifecycleSmoke', 'true'
+        }
+        // ForgeGradle merges runs in name order: server parents must be processed first.
+        serverRoomSmoke {
+            taskName 'runRoomServerSmoke'
+            parent runs.server
+            mods { modernmusic_smoke { source sourceSets.clientSmoke } }
+        }
+        roomHostSmoke {
+            parent runs.clientSmoke
+            property 'modernmusic.roomSmoke', 'host'
+            property 'modernmusic.publicRoomSmoke', providers.gradleProperty('publicRoomSmoke').getOrElse('false')
+            property 'modernmusic.audioSmoke', providers.gradleProperty('audioSmoke').getOrElse('false')
+            property 'modernmusic.sharedSmoke', providers.gradleProperty('sharedSmoke').getOrElse('false')
+            property 'modernmusic.ftbSmoke', providers.gradleProperty('ftbSmoke').getOrElse('false')
+            args '--username', 'RoomHost'
+        }
+        roomGuestSmoke {
+            parent runs.clientSmoke
+            property 'modernmusic.roomSmoke', 'guest'
+            property 'modernmusic.publicRoomSmoke', providers.gradleProperty('publicRoomSmoke').getOrElse('false')
+            property 'modernmusic.audioSmoke', providers.gradleProperty('audioSmoke').getOrElse('false')
+            property 'modernmusic.sharedSmoke', providers.gradleProperty('sharedSmoke').getOrElse('false')
+            property 'modernmusic.ftbSmoke', providers.gradleProperty('ftbSmoke').getOrElse('false')
+            args '--username', 'RoomGuest'
+        }
+        serverOptionalSmoke {
+            taskName 'runOptionalServerSmoke'
+            parent runs.server
+            mods.remove(mods.getByName('modernmusic'))
+            mods { modernmusic_optional_smoke { source sourceSets.optionalServerSmoke } }
+            environment 'MOD_CLASSES', sourceSets.optionalServerSmoke.output.files.collect {
+                "modernmusic_optional_smoke%%${it.absolutePath}"
+            }.join(File.pathSeparator)
+            property 'modernmusic.optionalServerSmoke', 'true'
+        }
+        optionalClientSmoke {
+            parent runs.clientSmoke
+            property 'modernmusic.optionalClientSmoke', 'true'
+            args '--username', 'OptionalClient'
+        }
+    }
 }
 
 repositories {
@@ -36,518 +111,95 @@ repositories {
     maven { url = 'https://maven.architectury.dev'; content { includeGroup 'dev.architectury' } }
 }
 
-sourceSets {
-    clientSmoke
-    optionalServerSmoke
-    performanceAudit
-}
-def mainSources = sourceSets.named('main')
-def testSources = sourceSets.named('test')
-def clientSmokeSources = sourceSets.named('clientSmoke')
-def optionalServerSmokeSources = sourceSets.named('optionalServerSmoke')
-def performanceAuditSources = sourceSets.named('performanceAudit')
-// An opt-in before/after audit compiles the preserved production Java snapshot.
-// Keep separate class/output directories so editing and compiling current code is safe.
-if (auditBaseline) {
-    def baselineSources = layout.projectDirectory.dir('build/performance-before/main/java').asFile
-    if (!baselineSources.isDirectory()) throw new GradleException('Missing preserved audit baseline sources')
-    mainSources.configure { SourceSet sources -> sources.java.setSrcDirs([baselineSources]) }
-}
-configurations.clientSmokeImplementation.extendsFrom(configurations.implementation)
-configurations.clientSmokeRuntimeOnly.extendsFrom(configurations.runtimeOnly)
-configurations.performanceAuditImplementation.extendsFrom(configurations.implementation)
-configurations.performanceAuditRuntimeOnly.extendsFrom(configurations.runtimeOnly)
-
+jarJar.enable()
 dependencies {
-    // Compile against the real public API, but do not bundle or require these mods.
-    compileOnly("dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}") { transitive = false }
-    clientSmokeCompileOnly("dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}") { transitive = false }
-    clientSmokeCompileOnly("dev.ftb.mods:ftb-library-neoforge:${ftb_library_version}") { transitive = false }
-    if (gradleProviders.gradleProperty('ftbTeams').getOrElse('false').toBoolean()) {
-        runtimeOnly("dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}") { transitive = false }
-        runtimeOnly("dev.ftb.mods:ftb-library-neoforge:${ftb_library_version}") { transitive = false }
-        runtimeOnly("dev.architectury:architectury-neoforge:${architectury_version}") { transitive = false }
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+    compileOnly(fg.deobf("dev.ftb.mods:ftb-teams-forge:${ftb_teams_version}")) { transitive = false }
+    clientSmokeCompileOnly(fg.deobf("dev.ftb.mods:ftb-library-forge:${ftb_library_version}")) { transitive = false }
+    if (providers.gradleProperty('ftbTeams').getOrElse('false').toBoolean()) {
+        runtimeOnly(fg.deobf("dev.ftb.mods:ftb-teams-forge:${ftb_teams_version}")) { transitive = false }
+        runtimeOnly(fg.deobf("dev.ftb.mods:ftb-library-forge:${ftb_library_version}")) { transitive = false }
+        runtimeOnly(fg.deobf("dev.architectury:architectury-forge:${architectury_version}")) { transitive = false }
     }
     implementation 'javazoom:jlayer:1.0.1'
-    jarJar 'javazoom:jlayer:1.0.1'
     implementation 'com.google.zxing:core:3.5.3'
-    jarJar 'com.google.zxing:core:3.5.3'
+    minecraftLibrary 'javazoom:jlayer:1.0.1'
+    minecraftLibrary 'com.google.zxing:core:3.5.3'
+    jarJar(group: 'javazoom', name: 'jlayer', version: '[1.0.1,1.0.2)') { jarJar.pin(it, '1.0.1') }
+    jarJar(group: 'com.google.zxing', name: 'core', version: '[3.5.3,3.6)') { jarJar.pin(it, '3.5.3') }
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
-    testImplementation 'com.google.code.gson:gson:2.10.1'
-    testImplementation 'org.slf4j:slf4j-api:2.0.9'
-    testImplementation 'net.java.dev.jna:jna-platform:5.14.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-    clientSmokeImplementation files(mainSources.map { it.output })
-    performanceAuditImplementation files(mainSources.map { it.output })
 }
 
-tasks.named('test', Test).configure { Test testTask ->
-    testTask.useJUnitPlatform()
-    testTask.systemProperty 'junit.jupiter.execution.timeout.default', '10 s'
+tasks.named('test', Test) {
+    useJUnitPlatform()
+    systemProperty 'junit.jupiter.execution.timeout.default', '10 s'
 }
 
-// Explicit, opt-in real network probe; never part of test/check/build and never uses account credentials.
-tasks.register('probeGuest', JavaExec) {
-    group = 'verification'
-    description = 'Probe public guest metadata, resource resolution and MP3 decoding (no audio output).'
-    classpath = testSources.get().runtimeClasspath
-    mainClass = 'dev.modernmusic.probe.GuestProbe'
+// Standalone runs keep smoke fixtures out of release artifacts and user worlds.
+minecraft.runs.configureEach {
+    def directory = [serverRoomSmoke: 'room-server-smoke', serverOptionalSmoke: 'optional-server-smoke'][name]
+    workingDirectory project.file('runs/' + (directory ?: name.replaceAll(/([a-z])([A-Z])/, '$1-$2').toLowerCase()))
 }
-
-tasks.register('probeQq', JavaExec) {
-    group = 'verification'
-    description = 'Probe QQ Music public endpoints without reading account credentials.'
-    classpath = testSources.get().runtimeClasspath
-    mainClass = 'dev.modernmusic.probe.QqProbe'
+tasks.named('processResources', ProcessResources) {
+    inputs.property 'mod_version', mod_version
+    filesMatching('META-INF/mods.toml') { expand mod_version: mod_version }
+    from(['LICENSE', 'THIRD_PARTY_NOTICES.md']) { into 'META-INF' }
 }
-tasks.register('probeKugou', JavaExec) {
-    group = 'verification'
-    description = 'Probe Kugou public search, playlists, lyrics and free MP3 playback; no saved credentials.'
-    dependsOn testClasses
-    classpath = testSources.get().runtimeClasspath
-    mainClass = 'dev.modernmusic.probe.KugouProbe'
+tasks.named('sourcesJar', Jar) {
+    from(['LICENSE', 'THIRD_PARTY_NOTICES.md']) { into 'META-INF' }
 }
-
-tasks.register('probeSongLinks', JavaExec) {
-    group = 'verification'
-    description = 'Resolve reported QQ and Kugou song links through public metadata endpoints; no saved credentials or playback.'
-    dependsOn testClasses
-    classpath = testSources.get().runtimeClasspath
-    mainClass = 'dev.modernmusic.probe.SongLinkProbe'
-}
-
-tasks.register('probeArtwork', JavaExec) {
-    group = 'verification'
-    description = 'Check the reported NetEase cover through the production image loader; no account credentials.'
-    dependsOn testClasses
-    classpath = testSources.get().runtimeClasspath
-    mainClass = 'dev.modernmusic.client.ui.ArtworkCoverProbe'
-}
-
-tasks.register('probeAudio', JavaExec) {
-    group = 'verification'
-    description = 'Exercise the default system audio device with silent PCM (opt-in, not part of tests).'
-    classpath = testSources.get().runtimeClasspath
-    mainClass = 'dev.modernmusic.probe.AudioProbe'
-}
-
-tasks.register('probeLibrary', JavaExec) {
-    group = 'verification'
-    description = 'Probe public playlist, lyrics and artwork endpoints without account credentials.'
-    classpath = testSources.get().runtimeClasspath
-    mainClass = 'dev.modernmusic.probe.LibraryProbe'
-}
-
-tasks.register('probeSearch', JavaExec) {
-    group = 'verification'
-    description = 'Probe public song search and pagination without account credentials.'
-    classpath = testSources.get().runtimeClasspath
-    mainClass = 'dev.modernmusic.probe.SearchProbe'
-}
-
-tasks.register('probeAccount', JavaExec) {
-    group = 'verification'
-    description = 'Probe anonymous QR/account endpoints without accepting or exposing user credentials.'
-    classpath = testSources.get().runtimeClasspath
-    mainClass = 'dev.modernmusic.probe.AccountProbe'
-}
-tasks.register('probePlatformQr', JavaExec) {
-    group = 'verification'
-    description = 'Probe anonymous Kugou, QQ and WeChat QR creation and waiting status; no stored credentials.'
-    dependsOn testClasses
-    classpath = testSources.get().runtimeClasspath
-    mainClass = 'dev.modernmusic.probe.PlatformQrProbe'
-}
-tasks.register('probeQqLogin', JavaExec) {
-    group = 'verification'
-    description = 'Explicit user-assisted QQ/WeChat login check; temporary QR image, no account persistence.'
-    dependsOn testClasses
-    classpath = testSources.get().runtimeClasspath
-    mainClass = 'dev.modernmusic.probe.QqLoginProbe'
-    args gradleProviders.gradleProperty('qrMethod').getOrElse('QQ')
-}
-tasks.register('probeKugouCookie', JavaExec) {
-    group = 'verification'
-    description = 'Explicit validation of a user-provided Kugou cookie export; no credential output or persistence.'
-    dependsOn testClasses
-    classpath = testSources.get().runtimeClasspath
-    mainClass = 'dev.modernmusic.probe.KugouCookieProbe'
-    if (gradleProviders.gradleProperty('cookieFixture').getOrElse('false').toBoolean()) args '--fixture'
-    else if (gradleProviders.gradleProperty('cookieParseOnly').getOrElse('false').toBoolean()) args '--parse-only'
-}
-
-NamedDomainObjectContainer<ModModel> modDefinitions = neoForge.mods
-def musicMod = modDefinitions.register(musicModId) { ModModel mod ->
-    mod.modSourceSets.add(mainSources)
-}
-def smokeMod = modDefinitions.register('modernmusic_smoke') { ModModel mod ->
-    mod.modSourceSets.add(clientSmokeSources)
-}
-def optionalSmokeMod = modDefinitions.register('modernmusic_optional_smoke') { ModModel mod ->
-    mod.modSourceSets.add(optionalServerSmokeSources)
-}
-def auditMod = modDefinitions.register('modernmusic_audit') { ModModel mod ->
-    mod.modSourceSets.add(performanceAuditSources)
-}
-def mainMods = musicMod.map { mod -> [mod] }
-def smokeMods = musicMod.zip(smokeMod) { mod, smoke -> [mod, smoke] }
-def auditMods = musicMod.zip(auditMod) { mod, audit -> [mod, audit] }
-def optionalSmokeMods = optionalSmokeMod.map { mod -> [mod] }
-
-neoForge {
-    version = project.neo_version
-    addModdingDependenciesTo clientSmokeSources.get()
-    addModdingDependenciesTo optionalServerSmokeSources.get()
-    addModdingDependenciesTo performanceAuditSources.get()
-
-    runs {
-        auditServer { RunModel run ->
-            run.server()
-            run.sourceSet.set(performanceAuditSources)
-            run.loadedMods.set(auditMods)
-            run.gameDirectory = project.file('runs/audit-server')
-            run.programArgument '--nogui'
-            run.systemProperty 'modernmusic.auditRole', 'server'
-            run.systemProperty 'modernmusic.auditSharedAccount', gradleProviders.gradleProperty('auditSharedAccount').getOrElse('false')
-        }
-        auditLeader { RunModel run ->
-            run.client()
-            run.sourceSet.set(performanceAuditSources)
-            run.loadedMods.set(auditMods)
-            run.gameDirectory = project.file('runs/audit-leader')
-            run.systemProperty 'modernmusic.auditRole', 'leader'
-            run.systemProperty 'modernmusic.auditSharedAccount', gradleProviders.gradleProperty('auditSharedAccount').getOrElse('false')
-            run.programArguments.addAll('--username', 'AuditLeader')
-        }
-        auditGuest { RunModel run ->
-            run.client()
-            run.sourceSet.set(performanceAuditSources)
-            run.loadedMods.set(auditMods)
-            run.gameDirectory = project.file('runs/audit-guest')
-            run.systemProperty 'modernmusic.auditRole', 'guest'
-            run.systemProperty 'modernmusic.auditSharedAccount', gradleProviders.gradleProperty('auditSharedAccount').getOrElse('false')
-            run.programArguments.addAll('--username', 'AuditGuest')
-        }
-        client { RunModel run ->
-            run.client()
-            run.loadedMods.set(mainMods)
-            run.gameDirectory = project.file('runs/client')
-        }
-        server { RunModel run ->
-            run.server()
-            run.loadedMods.set(mainMods)
-            run.gameDirectory = project.file('runs/server')
-            run.programArgument '--nogui'
-        }
-        clientSmoke { RunModel run ->
-            run.client()
-            run.sourceSet.set(clientSmokeSources)
-            run.loadedMods.set(smokeMods)
-            run.gameDirectory = project.file('runs/client-smoke')
-        }
-        lifecycleSmoke { RunModel run ->
-            run.client()
-            run.sourceSet.set(clientSmokeSources)
-            run.loadedMods.set(smokeMods)
-            run.gameDirectory = project.file('runs/lifecycle-smoke')
-            run.systemProperty 'modernmusic.lifecycleSmoke', 'true'
-        }
-        fontSmoke { RunModel run ->
-            run.client()
-            run.sourceSet.set(clientSmokeSources)
-            run.loadedMods.set(smokeMods)
-            run.gameDirectory = project.file('runs/font-smoke')
-            run.systemProperty 'modernmusic.fontSmoke', 'true'
-        }
-        uiGallery { RunModel run ->
-            run.client()
-            run.sourceSet.set(clientSmokeSources)
-            run.loadedMods.set(smokeMods)
-            run.gameDirectory = project.file('runs/ui-gallery')
-            run.systemProperty 'modernmusic.uiGallery', 'true'
-        }
-        searchSmoke { RunModel run ->
-            run.client()
-            run.sourceSet.set(clientSmokeSources)
-            run.loadedMods.set(smokeMods)
-            run.gameDirectory = project.file('runs/search-smoke')
-            run.systemProperty 'modernmusic.searchSmoke', 'true'
-        }
-        roomHostSmoke { RunModel run ->
-            run.client()
-            run.sourceSet.set(clientSmokeSources)
-            run.loadedMods.set(smokeMods)
-            run.gameDirectory = project.file('runs/room-host-smoke')
-            run.systemProperty 'modernmusic.roomSmoke', 'host'
-            run.systemProperty 'modernmusic.audioSmoke', gradleProviders.gradleProperty('audioSmoke').getOrElse('false')
-            run.systemProperty 'modernmusic.sharedSmoke', gradleProviders.gradleProperty('sharedSmoke').getOrElse('false')
-            run.systemProperty 'modernmusic.ftbSmoke', gradleProviders.gradleProperty('ftbSmoke').getOrElse('false')
-            run.systemProperty 'modernmusic.roomUiSmoke', gradleProviders.gradleProperty('roomUiSmoke').getOrElse('false')
-            run.systemProperty 'modernmusic.publicRoomSmoke', gradleProviders.gradleProperty('publicRoomSmoke').getOrElse('false')
-            run.programArguments.addAll('--username', 'RoomHost')
-        }
-        roomGuestSmoke { RunModel run ->
-            run.client()
-            run.sourceSet.set(clientSmokeSources)
-            run.loadedMods.set(smokeMods)
-            run.gameDirectory = project.file('runs/room-guest-smoke')
-            run.systemProperty 'modernmusic.roomSmoke', 'guest'
-            run.systemProperty 'modernmusic.audioSmoke', gradleProviders.gradleProperty('audioSmoke').getOrElse('false')
-            run.systemProperty 'modernmusic.sharedSmoke', gradleProviders.gradleProperty('sharedSmoke').getOrElse('false')
-            run.systemProperty 'modernmusic.ftbSmoke', gradleProviders.gradleProperty('ftbSmoke').getOrElse('false')
-            run.systemProperty 'modernmusic.roomUiSmoke', gradleProviders.gradleProperty('roomUiSmoke').getOrElse('false')
-            run.systemProperty 'modernmusic.publicRoomSmoke', gradleProviders.gradleProperty('publicRoomSmoke').getOrElse('false')
-            run.programArguments.addAll('--username', 'RoomGuest')
-        }
-        roomServerSmoke { RunModel run ->
-            run.server()
-            run.sourceSet.set(clientSmokeSources)
-            run.loadedMods.set(smokeMods)
-            run.gameDirectory = project.file('runs/room-server-smoke')
-            run.programArgument '--nogui'
-        }
-        optionalServerSmoke { RunModel run ->
-            run.server()
-            run.sourceSet.set(optionalServerSmokeSources)
-            // The test fixture must be the only mod: Modern Music is deliberately absent.
-            run.loadedMods.set(optionalSmokeMods)
-            run.gameDirectory = project.file('runs/optional-server-smoke')
-            run.systemProperty 'modernmusic.optionalServerSmoke', 'true'
-            run.programArgument '--nogui'
-        }
-        optionalClientSmoke { RunModel run ->
-            run.client()
-            run.sourceSet.set(clientSmokeSources)
-            run.loadedMods.set(smokeMods)
-            run.gameDirectory = project.file('runs/optional-client-smoke')
-            run.systemProperty 'modernmusic.optionalClientSmoke', 'true'
-            run.programArguments.addAll('--username', 'OptionalClient')
-        }
-    }
-
-}
-
-tasks.withType(JavaExec).matching { it.name.startsWith('runAudit') }.configureEach {
-    jvmArgs '-Xms512m', '-Xmx2g'
-    systemProperty 'modernmusic.auditRenderCounters', 'true'
-    systemProperty 'modernmusic.auditBaseline', auditBaseline.toString()
-}
-
-def auditManifestSources = files(mainSources.map { it.allSource }, performanceAuditSources.map { it.allSource })
-def auditManifestDestination = layout.buildDirectory.file('audit-source-manifest.json')
-def auditManifestProjectRoot = layout.projectDirectory.asFile
-tasks.register('writeAuditSourceManifest') {
-    dependsOn 'performanceAuditClasses'
-    inputs.files(auditManifestSources)
-    outputs.file(auditManifestDestination)
-    doLast {
-        def files = auditManifestSources.files.findAll { it.isFile() }.sort { it.path }
-        def manifest = [baseline: auditBaseline, compiledAt: Instant.now().toString(), files: files.collect { file ->
-            [path: auditManifestProjectRoot.toPath().relativize(file.toPath()).toString().replace('\\', '/'), sha256: MessageDigest.getInstance('SHA-256').digest(file.bytes).encodeHex().toString()]
-        }]
-        def destination = auditManifestDestination.get().asFile
-        destination.parentFile.mkdirs()
-        destination.text = JsonOutput.prettyPrint(JsonOutput.toJson(manifest))
-    }
-}
-
-// This configuration is created when neoForge.version enables the modding runtime above.
-dependencies {
-    // NeoForge <= 1.21.8 does not expose plain Java libraries to development runs automatically.
-    additionalRuntimeClasspath 'javazoom:jlayer:1.0.1'
-    additionalRuntimeClasspath 'com.google.zxing:core:3.5.3'
-}
-
-def clientSmokeResult = layout.projectDirectory.file('runs/client-smoke/smoke-result.txt').asFile
-def lifecycleResult = layout.projectDirectory.file('runs/lifecycle-smoke/lifecycle-result.txt').asFile
-def fontResult = layout.projectDirectory.file('runs/font-smoke/font-result.txt').asFile
-def searchResult = layout.projectDirectory.file('runs/search-smoke/search-result.txt').asFile
-def galleryResult = layout.projectDirectory.file('runs/ui-gallery/gallery-result.txt').asFile
-['Client', 'Server'].each { side ->
-    def result = layout.projectDirectory.file("runs/optional-${side.toLowerCase()}-smoke/optional-result.txt").asFile
-    tasks.named("runOptional${side}Smoke").configure {
-        doLast {
-            if (!result.isFile() || !result.text.startsWith('PASS:')) {
-                throw new GradleException("Optional-server ${side} smoke failed; see ${result}")
-            }
-        }
-    }
-}
-tasks.named('runUiGallery').configure {
-    doFirst { galleryResult.parentFile.mkdirs(); galleryResult.text = 'RUNNING\n' }
-    doLast {
-        if (!galleryResult.isFile() || !galleryResult.text.startsWith('PASS:')) {
-            throw new GradleException('UI gallery failed; see runs/ui-gallery/gallery-result.txt and logs/latest.log')
-        }
-    }
-}
-tasks.named('runSearchSmoke').configure {
-    doFirst { searchResult.parentFile.mkdirs(); searchResult.text = 'RUNNING\n' }
-    doLast {
-        if (!searchResult.isFile() || !searchResult.text.startsWith('PASS:')) {
-            throw new GradleException('Search UI smoke failed; see runs/search-smoke/search-result.txt and logs/latest.log')
-        }
-    }
-}
-tasks.named('runLifecycleSmoke').configure {
-    doFirst { lifecycleResult.parentFile.mkdirs(); lifecycleResult.text = 'RUNNING\n' }
-    doLast {
-        if (!lifecycleResult.isFile() || !lifecycleResult.text.startsWith('PASS:')) {
-            throw new GradleException('M6 lifecycle smoke failed; see runs/lifecycle-smoke/lifecycle-result.txt and logs/latest.log')
-        }
-    }
-}
-tasks.named('runFontSmoke').configure {
-    doFirst { fontResult.parentFile.mkdirs(); fontResult.text = 'RUNNING\n' }
-    doLast {
-        if (!fontResult.isFile() || !fontResult.text.startsWith('PASS:')) {
-            throw new GradleException('Font smoke failed; see runs/font-smoke/font-result.txt and logs/latest.log')
-        }
-    }
-}
-tasks.register('prepareClientSmokeMarker') {
-    doLast {
-        clientSmokeResult.parentFile.mkdirs()
-        clientSmokeResult.text = 'RUNNING\n'
-    }
-}
-tasks.named('runClientSmoke').configure {
-    dependsOn 'prepareClientSmokeMarker'
-    doLast {
-        if (!clientSmokeResult.isFile() || !clientSmokeResult.text.startsWith('PASS:')) {
-            throw new GradleException('Client playback smoke failed; see runs/client-smoke/smoke-result.txt and logs/latest.log')
-        }
-    }
-}
-
-['Host', 'Guest'].each { role ->
-    def result = layout.projectDirectory.file("runs/room-${role.toLowerCase()}-smoke/room-result.txt").asFile
-    tasks.named("runRoom${role}Smoke").configure {
-        doLast {
-            if (!result.isFile() || !result.text.startsWith('PASS:')) {
-                throw new GradleException("Room ${role} smoke failed; see ${result}")
-            }
-        }
-    }
-}
-
-def ftbServerSmoke = gradleProviders.gradleProperty('ftbTeams').getOrElse('false').toBoolean()
-def serverSmokeResult = layout.projectDirectory.file("runs/room-server-smoke/server-${ftbServerSmoke ? 'ftb' : 'no-ftb'}-result.txt").asFile
-tasks.named('runRoomServerSmoke').configure {
-    doFirst { serverSmokeResult.parentFile.mkdirs(); serverSmokeResult.text = 'RUNNING\n' }
-    doLast {
-        if (!serverSmokeResult.isFile() || !serverSmokeResult.text.startsWith('PASS:')) {
-            throw new GradleException("Dedicated smoke failed; see ${serverSmokeResult}")
-        }
-    }
-}
-
-var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
-    var properties = [
-        minecraft_version_range: minecraft_version_range,
-        neo_version_range: neo_version_range,
-        loader_version_range: loader_version_range,
-        mod_id: mod_id,
-        mod_name: mod_name,
-        mod_license: mod_license,
-        mod_version: mod_version
-    ]
-    inputs.properties properties
-    expand properties
-    from 'src/main/templates'
-    into layout.buildDirectory.dir('generated/sources/modMetadata')
-}
-
-mainSources.configure { SourceSet sources -> sources.resources.srcDir generateModMetadata }
-neoForge.ideSyncTask generateModMetadata
-
-tasks.named('processResources', ProcessResources).configure { ProcessResources resourcesTask ->
-    resourcesTask.from(['LICENSE', 'THIRD_PARTY_NOTICES.md']) { CopySpec spec -> spec.into 'META-INF' }
-}
-
-tasks.named('sourcesJar', Jar).configure { Jar sourcesTask ->
-    sourcesTask.from(['LICENSE', 'THIRD_PARTY_NOTICES.md']) { CopySpec spec -> spec.into 'META-INF' }
-}
-
+tasks.named('jar', Jar) { archiveClassifier = 'slim'; finalizedBy 'reobfJar' }
+tasks.named('jarJar', Jar) { archiveClassifier = ''; finalizedBy 'reobfJarJar' }
+reobf { jarJar {} }
+tasks.named('assemble') { dependsOn 'jarJar' }
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
-    options.release = 21
+    options.release = 17
 }
-
 tasks.withType(AbstractArchiveTask).configureEach {
     preserveFileTimestamps = false
     reproducibleFileOrder = true
 }
 
-// Release artifacts are an allowlisted bundle; runtime accounts, worlds and smoke code never enter it.
-def releaseJar = tasks.named('jar', Jar).flatMap { it.archiveFile }
-def releaseSources = tasks.named('sourcesJar', Jar).flatMap { it.archiveFile }
-def releaseChecksums = layout.buildDirectory.file('release/SHA256SUMS.txt')
 tasks.register('verifyReleaseJar') {
     group = 'verification'
-    dependsOn tasks.named('jar')
-    inputs.file(releaseJar)
+    dependsOn 'reobfJarJar'
     doLast {
-        new ZipFile(releaseJar.get().asFile).withCloseable { zip ->
+        new ZipFile(tasks.jarJar.archiveFile.get().asFile).withCloseable { zip ->
             def names = zip.entries().collect { it.name }
-            (['META-INF/neoforge.mods.toml', 'META-INF/jarjar/metadata.json', 'icon.png',
-             'META-INF/LICENSE', 'META-INF/THIRD_PARTY_NOTICES.md', 'META-INF/licenses/JLayer-LGPL-2.1.txt',
-             'META-INF/licenses/ZXing-LICENSE.txt', 'META-INF/licenses/NetMusic-BetterLogin-MIT.txt',
-             'META-INF/library-sources/jlayer-1.0.1-sources.jar',
+            ['META-INF/mods.toml', 'META-INF/jarjar/metadata.json', 'META-INF/accesstransformer.cfg',
+             'META-INF/LICENSE', 'META-INF/THIRD_PARTY_NOTICES.md', 'icon.png',
              'assets/modernmusic/lang/zh_cn.json', 'assets/modernmusic/lang/en_us.json',
-             'assets/modernmusic/font/ui_sans.ttf', 'META-INF/licenses/NotoSansSC-OFL.txt',
-             'META-INF/accesstransformer.cfg'] + ['create', 'ae2', 'ars_nouveau', 'astral_sorcery'].collectMany { skin ->
-                ['panel.png', 'panel.png.mcmeta'].collect { "assets/modernmusic/textures/gui/sprites/theme/${skin}/${it}".toString() }
-             }).each { required ->
-                if (!names.contains(required)) throw new GradleException("Release JAR missing ${required}")
+             'assets/modernmusic/font/ui_sans.ttf'].each {
+                if (!names.contains(it)) throw new GradleException("Missing release resource: ${it}")
             }
-            if (names.any { it.contains('/smoke/') || it.contains('/audit/') || it.startsWith('modernmusic-private/') || it.startsWith('runs/') })
-                throw new GradleException('Release JAR contains development or private files')
-            names.findAll { it.endsWith('.class') }.each { name ->
-                def bytes = zip.getInputStream(zip.getEntry(name)).withCloseable { it.readNBytes(8) }
-                if (bytes.length != 8 || ((bytes[6] & 255) << 8 | (bytes[7] & 255)) != 65)
-                    throw new GradleException("Expected Java 21 bytecode: ${name}")
+            if (names.any { it.contains('/smoke/') || it.contains('/audit/') || it.startsWith('modernmusic-private/') })
+                throw new GradleException('Development/private content in release JAR')
+            names.findAll { it.endsWith('.class') }.each {
+                def bytes = zip.getInputStream(zip.getEntry(it)).withCloseable { stream -> stream.readNBytes(8) }
+                if (((bytes[6] & 255) << 8 | (bytes[7] & 255)) != 61) throw new GradleException("Not Java 17: ${it}")
             }
         }
     }
 }
-tasks.named('check').configure { dependsOn 'verifyReleaseJar' }
-tasks.register('releaseChecksums') {
-    dependsOn 'verifyReleaseJar', 'sourcesJar'
-    inputs.files(releaseJar, releaseSources)
-    outputs.file(releaseChecksums)
-    doLast {
-        def target = releaseChecksums.get().asFile
-        target.parentFile.mkdirs()
-        target.text = [releaseJar.get().asFile, releaseSources.get().asFile].collect { artifact ->
-            def hash = MessageDigest.getInstance('SHA-256').digest(artifact.bytes).encodeHex().toString()
-            "${hash}  ${artifact.name}\n"
-        }.join('')
+tasks.named('check') { dependsOn 'verifyReleaseJar' }
+
+def smokeResults = [ClientSmoke: ['client-smoke', 'smoke-result.txt'], FontSmoke: ['font-smoke', 'font-result.txt'],
+                    SearchSmoke: ['search-smoke', 'search-result.txt'], UiGallery: ['ui-gallery', 'gallery-result.txt'],
+                    LifecycleSmoke: ['lifecycle-smoke', 'lifecycle-result.txt'],
+                    OptionalClientSmoke: ['optional-client-smoke', 'optional-result.txt'],
+                    OptionalServerSmoke: ['optional-server-smoke', 'optional-result.txt'],
+                    RoomHostSmoke: ['room-host-smoke', 'room-result.txt'], RoomGuestSmoke: ['room-guest-smoke', 'room-result.txt'],
+                    RoomServerSmoke: ['room-server-smoke', "server-${providers.gradleProperty('ftbTeams').getOrElse('false').toBoolean() ? 'ftb' : 'no-ftb'}-result.txt"]]
+smokeResults.each { name, location ->
+    tasks.matching { it.name == "run${name}" }.configureEach {
+        def resultFile = file("runs/${location[0]}/${location[1]}")
+        doFirst { resultFile.parentFile.mkdirs(); resultFile.text = 'RUNNING\n' }
+        doLast {
+            if (!resultFile.isFile() || !resultFile.text.startsWith('PASS:'))
+                throw new GradleException("Smoke failed; see ${resultFile}")
+        }
     }
-}
-tasks.register('releaseBundle', Zip) {
-    group = 'distribution'
-    description = 'Build and verify the release JAR, sources, checksums and user documentation.'
-    dependsOn 'build', 'releaseChecksums'
-    archiveFileName = "${mod_id}-${mod_version}-neoforge-${minecraft_version}.zip"
-    destinationDirectory = layout.buildDirectory.dir('distributions')
-    from(releaseJar)
-    from(releaseSources)
-    from(releaseChecksums)
-    from('README.md', 'CHANGELOG.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md')
-    from('docs') { into 'docs' }
-}
-
-tasks.named('wrapper', Wrapper).configure {
-    gradleVersion = '9.2.1'
-    distributionType = Wrapper.DistributionType.BIN
-    distributionSha256Sum = '72f44c9f8ebcb1af43838f45ee5c4aa9c5444898b3468ab3f4af7b6076c5bc3f'
-}
-
-idea.module {
-    downloadSources = true
-    downloadJavadoc = true
-    // Local caches and upstream reference checkouts are not Modern Music source roots.
-    excludeDirs += files('.gradle-user-home', '.dev-cache', '.local', 'references', 'runs', 'run').files
 }

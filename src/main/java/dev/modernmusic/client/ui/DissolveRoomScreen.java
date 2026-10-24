@@ -32,9 +32,9 @@ public final class DissolveRoomScreen extends MusicScreen {
         confirm.active = rooms.canDissolve(room, epoch); setInitialFocus(cancel);
     }
     @Override public void tick() { confirm.active = rooms.canDissolve(room, epoch); }
-    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g, int x, int y, float delta) {
-        if (client().level == null) renderPanorama(g, delta);
-        renderBlurredBackground(delta); scrim(g, width, height);
+    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g) {
+        if (client().level == null) renderDirtBackground(g);
+        scrim(g, width, height);
         panel(g, left, top, panelWidth, panelHeight, 12); header(g, left, top, panelWidth, 38);
     }
     @Override protected void renderMusic(GuiGraphics g, int x, int y, float delta) {

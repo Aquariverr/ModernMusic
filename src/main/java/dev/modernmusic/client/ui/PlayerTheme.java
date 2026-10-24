@@ -8,7 +8,6 @@ import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.resources.metadata.gui.GuiSpriteScaling;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FormattedCharSequence;
 
@@ -102,18 +101,19 @@ public final class PlayerTheme {
     private static ResourceLocation sprite(Skin skin, Skin.Part part) {
         int index = skin.ordinal() * PARTS + part.ordinal();
         var id = sprites[index];
-        if (id == null) sprites[index] = id = ResourceLocation.fromNamespaceAndPath(ModernMusic.MOD_ID, skin.sprite(part));
+        if (id == null) sprites[index] = id = new ResourceLocation(ModernMusic.MOD_ID, skin.sprite(part));
         return id;
     }
+    public static void reloadSprites() { ThemeSprites.clear(); }
+
     /** A fixed-size part's own width or height in GUI pixels, e.g. a slider handle. */
     static int spriteSize(Skin skin, Skin.Part part, boolean height) {
-        var contents = Minecraft.getInstance().getGuiSprites().getSprite(sprite(skin, part)).contents();
+        var contents = ThemeSprites.get(sprite(skin, part));
         return height ? contents.height() : contents.width();
     }
     /** A nine-sliced part's side border (left and right are equal), e.g. how thick a skin's panel frame is. */
     static int spriteBorder(Skin skin, Skin.Part part) {
-        var sprites = Minecraft.getInstance().getGuiSprites();
-        return sprites.getSpriteScaling(sprites.getSprite(sprite(skin, part))) instanceof GuiSpriteScaling.NineSlice nine ? nine.border().left() : 0;
+        return ThemeSprites.get(sprite(skin, part)).left();
     }
     /** Draws a skin part over the bounds; nine-sliced parts tile their edges and centre, one texel per GUI pixel. */
     static void sprite(GuiGraphics g, Skin skin, Skin.Part part, int x, int y, int w, int h, float alpha) {
@@ -121,7 +121,7 @@ public final class PlayerTheme {
         g.flush(); // Text queued before the sprite must stay beneath it.
         RenderSystem.enableBlend(); RenderSystem.defaultBlendFunc();
         if (alpha < 1) g.setColor(1, 1, 1, alpha);
-        g.blitSprite(sprite(skin, part), x, y, w, h);
+        ThemeSprites.get(sprite(skin, part)).draw(g, x, y, w, h);
         if (alpha < 1) g.setColor(1, 1, 1, 1);
         RenderSystem.disableBlend();
     }
@@ -374,14 +374,14 @@ public final class PlayerTheme {
 
     /** A pill rail with an accent fill and a knob that grows on hover; shared by every slider. */
     static void track(GuiGraphics g, int x, int centerY, int width, double value, boolean active, float hover) {
-        float knob = x + (float) (width * Math.clamp(value, 0, 1));
+        float knob = x + (float) (width * dev.modernmusic.compat.Java17.clamp(value, 0, 1));
         if (skin != null) {
             int rail = spriteSize(skin, Skin.Part.SLIDER_TRACK, true), top = centerY - rail / 2, fill = Math.round(knob) - x;
             sprite(g, Skin.Part.SLIDER_TRACK, x, top, width, rail);
             if (active && fill > 0) sprite(g, Skin.Part.SLIDER_FILL, x, top, Math.max(fill, 2), rail);
             var handle = !active ? Skin.Part.SLIDER_HANDLE_DISABLED : hover > .5f ? Skin.Part.SLIDER_HANDLE_HOVERED : Skin.Part.SLIDER_HANDLE;
             int hw = spriteSize(skin, handle, false), hh = spriteSize(skin, handle, true);
-            sprite(g, handle, Math.clamp(Math.round(knob) - hw / 2, x - hw / 2, x + width - hw / 2 - 1), centerY - hh / 2);
+            sprite(g, handle, dev.modernmusic.compat.Java17.clamp(Math.round(knob) - hw / 2, x - hw / 2, x + width - hw / 2 - 1), centerY - hh / 2);
             return;
         }
         if (blocky()) {
@@ -389,7 +389,7 @@ public final class PlayerTheme {
             g.fill(x + 1, centerY - 1, x + width - 1, centerY + 1, ORE_HEADER);
             int fill = Math.round(knob);
             if (fill > x + 1) g.fill(x + 1, centerY - 1, Math.min(x + width - 1, fill), centerY + 1, active ? ORE_GREEN_HI : QUIET);
-            int left = Math.clamp(fill - 3, x - 3, x + width - 3);
+            int left = dev.modernmusic.compat.Java17.clamp(fill - 3, x - 3, x + width - 3);
             raised(g, left, centerY - 6, 6, 12, active ? mix(ORE_FACE, ORE_FACE_HOVER, hover) : ORE_DISABLED,
                     active ? ORE_FACE_HI : 0, active ? ORE_FACE_DEPTH : ORE_DISABLED_DEPTH, false);
             return;
@@ -447,7 +447,7 @@ public final class PlayerTheme {
     }
 
     static int alpha(int color, double opacity) {
-        return (color & 0xFFFFFF) | (int) Math.round((color >>> 24) * Math.clamp(opacity, 0, 1)) << 24;
+        return (color & 0xFFFFFF) | (int) Math.round((color >>> 24) * dev.modernmusic.compat.Java17.clamp(opacity, 0, 1)) << 24;
     }
 
     static int mix(int from, int to, float t) { return Shapes.mix(from, to, t); }

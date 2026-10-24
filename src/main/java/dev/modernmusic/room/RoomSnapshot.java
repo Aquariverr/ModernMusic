@@ -24,7 +24,9 @@ public record RoomSnapshot(UUID id, UUID epoch, String name, long revision, long
         Objects.requireNonNull(mode); Objects.requireNonNull(state);
         members = List.copyOf(members); songs = List.copyOf(songs);
         if (name == null || name.length() > 40
-                || (!RoomService.PUBLIC_ROOM_ID.equals(id) && members.size() > RoomService.MAX_MEMBERS) || songs.size() > 400
+                || members.size() > (RoomService.PUBLIC_ROOM_ID.equals(id) ? RoomService.MAX_PUBLIC_MEMBERS : RoomService.MAX_MEMBERS)
+                || members.stream().anyMatch(member -> member.id() == null || member.name() == null || member.name().length() > 16)
+                || songs.size() > 400
                 || songs.stream().anyMatch(n -> n == null || n.length() > 64)
                 || index < -1 || index >= songs.size() || positionMs < 0 || durationMs < 0
                 || revision < 0 || queueRevision < 0 || playbackRevision < 0)
@@ -44,13 +46,20 @@ public record RoomSnapshot(UUID id, UUID epoch, String name, long revision, long
     public boolean canManage(UUID player) {
         return members.stream().anyMatch(m -> m.id().equals(player) && (isPublicRoom() ? m.administrator() : owner.equals(player)));
     }
+    /** Public listeners can supply unknown duration while no administrator/DJ is present; controls stay unchanged. */
+    public boolean canReportDuration(UUID player) {
+        if (durationMs != 0 || state == State.STOPPED || index < 0) return false;
+        if (canControl(player)) return true;
+        return isPublicRoom() && members.stream().anyMatch(member -> member.id().equals(player))
+                && members.stream().noneMatch(member -> member.administrator() || member.dj());
+    }
     public boolean allows(UUID player, RoomCommand.Action action) {
         return switch (action) {
             case ADD -> canRequest(player);
             case INVITE, DISSOLVE -> !isTeamRoom() && !isPublicRoom() && canManage(player);
             case KICK -> !isTeamRoom() && canManage(player);
             case DJ, REQUESTER -> canManage(player);
-            case LEAVE, SNAPSHOT, DURATION -> members.stream().anyMatch(m -> m.id().equals(player));
+            case LEAVE, SNAPSHOT -> members.stream().anyMatch(m -> m.id().equals(player));
             default -> canControl(player);
         };
     }

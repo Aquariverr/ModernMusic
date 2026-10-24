@@ -18,27 +18,25 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.*;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.fml.common.Mod;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.common.NeoForge;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.common.MinecraftForge;
 import static dev.modernmusic.room.RoomCommand.Action.*;
 
 /** Two actual game processes and loopback networking; generated silent MP3, no upstream/account access. */
-@Mod(value = "modernmusic_smoke", dist = Dist.CLIENT)
 public final class RoomNetworkSmoke {
     private final String role = System.getProperty("modernmusic.roomSmoke");
     private final boolean host = "host".equals(role);
     private final boolean uiOnly = Boolean.getBoolean("modernmusic.roomUiSmoke");
     private FtbRoomScenario ftbScenario;
+    private PublicRoomScenario publicScenario;
     private SharedAccountScenario sharedScenario;
     private AudioNetworkScenario audioScenario;
-    private PublicRoomScenario publicScenario;
     private LocalAudioProvider fixtureLocalAudio;
     private String fixtureAudioName;
     private final boolean audioSmoke = Boolean.getBoolean("modernmusic.audioSmoke");
     private final boolean sharedSmoke = Boolean.getBoolean("modernmusic.sharedSmoke");
-    private final boolean publicSmoke = Boolean.getBoolean("modernmusic.publicRoomSmoke");
     private PlaybackController player;
     private RoomClient rooms;
     private int step;
@@ -57,18 +55,19 @@ public final class RoomNetworkSmoke {
     private int uiStage, uiFrames, uiReadyFrames;
     private int fontStage;
     private String uiAction = "";
-    public RoomNetworkSmoke(net.neoforged.bus.api.IEventBus bus) {
+    public RoomNetworkSmoke(net.minecraftforge.eventbus.api.IEventBus bus) {
         bus.addListener(this::registerHud);
-        if (role != null) { deadline = RoomNetwork.now() + 420_000; NeoForge.EVENT_BUS.addListener(this::tick); }
+        if (role != null) { deadline = RoomNetwork.now() + 420_000; MinecraftForge.EVENT_BUS.addListener(this::tick); }
     }
-    private void registerHud(net.neoforged.neoforge.client.event.RegisterGuiLayersEvent event) {
+    private void registerHud(net.minecraftforge.client.event.RegisterGuiOverlaysEvent event) {
         // Same production HUD renderer with this isolated fixture's actual room controller.
         if (!sharedSmoke && (!uiOnly || host)) return;
-        event.registerAboveAll(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("modernmusic_smoke", "room_hud"),
-                (graphics, delta) -> { if (fixtureHud != null) dev.modernmusic.client.ui.MusicHud.render(graphics, player, fixtureHud,
+        event.registerAboveAll("room_hud",
+                (gui, graphics, delta, width, height) -> { if (fixtureHud != null) dev.modernmusic.client.ui.MusicHud.render(graphics, player, fixtureHud,
                         graphics.guiWidth(), graphics.guiHeight(), false); });
     }
-    private void tick(ClientTickEvent.Post event) {
+    private void tick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
         if (step == -1) return;
         var game = Minecraft.getInstance(); long time = RoomNetwork.now();
         try {
@@ -82,11 +81,12 @@ public final class RoomNetworkSmoke {
                 Files.deleteIfExists(directory.resolve("room-ready.txt"));
                 Files.deleteIfExists(directory.resolve("room-measured.txt"));
                 Files.deleteIfExists(directory.resolve("room-late.txt"));
+                if (Boolean.getBoolean("modernmusic.publicRoomSmoke")) Files.deleteIfExists(directory.resolve("public-stage.txt"));
                 if (audioSmoke) for (String marker : List.of("audio-id.txt", "audio-personal.txt", "audio-group.txt")) Files.deleteIfExists(directory.resolve(marker));
             }
             if (step == 0) {
                 if (game.getOverlay() != null) return;
-                if (game.screen instanceof AccessibilityOnboardingScreen) { game.options.onboardingAccessibilityFinished(); game.setScreen(new TitleScreen()); }
+                if (game.screen instanceof AccessibilityOnboardingScreen) {  game.setScreen(new TitleScreen()); }
                 if (!(game.screen instanceof TitleScreen)) return;
                 if (!game.options.languageCode.equals("zh_cn")) {
                     game.options.languageCode = "zh_cn"; game.getLanguageManager().setSelected("zh_cn"); game.reloadResourcePacks(); return;
@@ -100,13 +100,13 @@ public final class RoomNetworkSmoke {
                                     net.minecraft.world.Difficulty.PEACEFUL, true, new net.minecraft.world.level.GameRules(), net.minecraft.world.level.WorldDataConfiguration.DEFAULT),
                             new net.minecraft.world.level.levelgen.WorldOptions(0L, false, false),
                             registry -> registry.registryOrThrow(net.minecraft.core.registries.Registries.WORLD_PRESET)
-                                    .getHolderOrThrow(net.minecraft.world.level.levelgen.presets.WorldPresets.FLAT).value().createWorldDimensions(), new TitleScreen());
+                                    .getHolderOrThrow(net.minecraft.world.level.levelgen.presets.WorldPresets.FLAT).value().createWorldDimensions());
                 } else {
                     if (time < nextConnect) return;
                     if (!Files.exists(peer.resolve("room-ready.txt"))) return;
                     nextConnect = time + 2_000;
                     ConnectScreen.startConnecting(new TitleScreen(), game, new ServerAddress("127.0.0.1", 25575),
-                            new ServerData("Room Smoke", "127.0.0.1:25575", ServerData.Type.OTHER), false, null);
+                            new ServerData("Room Smoke", "127.0.0.1:25575", false), false);
                 }
                 step = 1; return;
             }
@@ -175,8 +175,8 @@ public final class RoomNetworkSmoke {
                 return;
             }
             fixtureAccount.tick();
-            if (publicSmoke) {
-                if (publicScenario == null) publicScenario = new PublicRoomScenario(host, peer);
+            if (Boolean.getBoolean("modernmusic.publicRoomSmoke")) {
+                if (publicScenario == null) publicScenario = new PublicRoomScenario(host, directory, peer);
                 player.tick(1); rooms.tick();
                 String result = publicScenario.tick(game, rooms, player);
                 if (result != null) finish(game, result);
@@ -235,7 +235,7 @@ public final class RoomNetworkSmoke {
                 guestName = other.get().getGameProfile().getName(); rooms.command(INVITE, guestName, 0); roomStarted = time; step++;
             }
             case 6 -> {
-                if (!requesterGranted && room.members().size() == 2) {
+                if (!uiOnly && !requesterGranted && room.members().size() == 2) {
                     rooms.command(REQUESTER, guestName, 1); requesterGranted = true;
                 }
                 if (uiOnly) {
@@ -303,7 +303,7 @@ public final class RoomNetworkSmoke {
     }
     private void guest(Minecraft game, RoomSnapshot room, long time) throws Exception {
         if (step == 2 && !rooms.update().invitations().isEmpty()) {
-            rooms.join(rooms.update().invitations().getFirst()); since = time; step = 3; return;
+            rooms.join(rooms.update().invitations().get(0)); since = time; step = 3; return;
         }
         if (room == null) {
             if (uiOnly && uiStage == 11) {
@@ -324,7 +324,7 @@ public final class RoomNetworkSmoke {
             lateAligned = player.audio().positionMs() > 1_000;
             if (!lateAligned) throw new IllegalStateException("Late join did not seek to room position");
             Files.writeString(directory.resolve("room-late.txt"), "PASS\n");
-            net.neoforged.neoforge.network.PacketDistributor.sendToServer(new RoomNetwork.CommandPayload(RoomJson.encode(
+            dev.modernmusic.network.ForgeNetwork.sendToServer(new RoomNetwork.CommandPayload(RoomJson.encode(
                     new RoomCommand(STOP, room.id(), room.epoch(), room.revision(), "", 0))));
             since = time; step = 4;
         }
@@ -471,7 +471,7 @@ public final class RoomNetworkSmoke {
     }
     private static byte[] silentMp3() {
         var bytes = new java.io.ByteArrayOutputStream();
-        for (int i = 0; i < (Boolean.getBoolean("modernmusic.publicRoomSmoke") ? 180 : 12_000); i++) {
+        for (int i = 0; i < 12_000; i++) {
             byte[] frame = new byte[144 * 128_000 / 44_100];
             frame[0] = (byte) 0xff; frame[1] = (byte) 0xfb; frame[2] = (byte) 0x90;
             bytes.writeBytes(frame);

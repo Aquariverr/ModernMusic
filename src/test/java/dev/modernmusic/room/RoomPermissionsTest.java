@@ -59,7 +59,7 @@ class RoomPermissionsTest {
         f.role(REQUESTER, 1); f.permissions(true, false);
         f.command(f.member, ADD, 41, null); assertEquals(1, f.append(batch).imported());
         assertEquals(List.of("41", "42"), f.room().songs());
-        for (var action : List.of(PLAY, PAUSE, STOP, SEEK, NEXT, MODE, REMOVE, CLEAR)) {
+        for (var action : List.of(PLAY, PAUSE, STOP, SEEK, NEXT, MODE, DURATION, REMOVE, CLEAR)) {
             f.denied("permission", () -> f.command(f.member, action, 0, null));
         }
         for (var action : List.of(DJ, REQUESTER)) {

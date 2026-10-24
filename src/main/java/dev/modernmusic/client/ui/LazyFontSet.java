@@ -2,8 +2,7 @@ package dev.modernmusic.client.ui;
 
 import com.mojang.blaze3d.font.GlyphInfo;
 import com.mojang.blaze3d.font.GlyphProvider;
-import java.util.Set;
-import net.minecraft.client.gui.font.FontOption;
+import java.util.List;
 import net.minecraft.client.gui.font.FontSet;
 import net.minecraft.client.gui.font.glyphs.BakedGlyph;
 import net.minecraft.client.renderer.texture.TextureManager;
@@ -15,24 +14,36 @@ import net.minecraft.resources.ResourceLocation;
  * Like FontSet itself, this set and its providers are confined to the render thread.
  */
 public final class LazyFontSet extends FontSet {
-    private Set<FontOption> options = Set.of();
     private boolean indexed;
-
-    public LazyFontSet(TextureManager textures, ResourceLocation name) { super(textures, name); }
-
-    @Override public void reload(Set<FontOption> options) {
-        this.options = Set.copyOf(options);
-        indexed = false;
-        resetTextures();
-        activeProviders = allProviders.stream().filter(provider -> provider.filter().apply(options))
-                .map(GlyphProvider.Conditional::provider).toList();
+    public LazyFontSet(TextureManager textures, ResourceLocation name) {
+        super(textures, name);
     }
-
+    @Override public void reload(List<GlyphProvider> providers) {
+        this.providers.clear();
+        // Reset atlases without scanning every supported Unicode codepoint.
+        super.reload(List.of());
+        this.providers.addAll(providers);
+        indexed = false;
+    }
+    @Override public void close() {
+        // UiFont owns the smooth provider; Minecraft owns the borrowed vanilla providers.
+        providers.clear();
+        super.close();
+    }
     @Override public BakedGlyph getRandomGlyph(GlyphInfo glyph) {
         if (!indexed) {
-            // Preserve vanilla's full candidate pool and advances for the obfuscated style.
-            // Do not reload textures here: a string may already have queued vertices from them.
-            activeProviders = selectProviders(allProviders, options);
+            var codepoints = new it.unimi.dsi.fastutil.ints.IntOpenHashSet();
+            for (var provider : providers) codepoints.addAll(provider.getSupportedGlyphs());
+            codepoints.forEach((int cp) -> {
+                for (var provider : providers) {
+                    var info = provider.getGlyph(cp);
+                    if (info == null) continue;
+                    if (info != net.minecraft.client.gui.font.glyphs.SpecialGlyphs.MISSING)
+                        glyphsByWidth.computeIfAbsent(net.minecraft.util.Mth.ceil(info.getAdvance(false)),
+                                key -> new it.unimi.dsi.fastutil.ints.IntArrayList()).add(cp);
+                    break;
+                }
+            });
             indexed = true;
         }
         return super.getRandomGlyph(glyph);

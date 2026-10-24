@@ -14,7 +14,7 @@ public final class KugouProbe {
             if (!song.id().equals(id) || song.title().isBlank()) throw new AssertionError("Details");
             System.out.println("Kugou detail=OK");
             var first = provider.searchSongs("hello", 0, 10).join(); var second = provider.searchSongs("hello", 10, 10).join();
-            if (first.tracks().isEmpty() || second.tracks().isEmpty() || first.tracks().getFirst().id().equals(second.tracks().getFirst().id())) throw new AssertionError("Search pagination");
+            if (first.tracks().isEmpty() || second.tracks().isEmpty() || first.tracks().get(0).id().equals(second.tracks().get(0).id())) throw new AssertionError("Search pagination");
             System.out.println("Kugou search=" + first.tracks().size() + ", page2=" + second.tracks().size());
             var list = provider.getPlaylist(new SongId(125032, MusicPlatform.KUGOU)).join();
             if (list.ids().isEmpty()) throw new AssertionError("Playlist");

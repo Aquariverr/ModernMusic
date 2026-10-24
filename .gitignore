@@ -20,8 +20,8 @@ run/
 runs/
 logs/
 crash-reports/
-config/
-modernmusic-private/
+/config/
+/modernmusic-private/
 /modernmusic/
 .env
 .env.*
@@ -34,7 +34,3 @@ credentials*.json
 hs_err_pid*
 .claude
 references/
-/scripts/*
-!/scripts/dev.ps1
-!/scripts/room-smoke.ps1
-!/scripts/optional-server-smoke.ps1

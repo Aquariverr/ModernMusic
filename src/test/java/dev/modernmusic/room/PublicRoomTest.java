@@ -35,7 +35,7 @@ class PublicRoomTest {
         assertEquals(1, rooms.snapshots().size());
         assertNull(update(rooms, listener).room()); // Discovery never opts anyone into listening.
         assertTrue(update(rooms, listener).invitations().isEmpty());
-        assertTrue(update(rooms, listener).savedRooms().getFirst().isPublicRoom());
+        assertTrue(update(rooms, listener).savedRooms().get(0).isPublicRoom());
         join(rooms, listener);
         assertFalse(rooms.current(listener).canManage(listener));
         assertFalse(rooms.current(listener).canRequest(listener));
@@ -55,7 +55,7 @@ class PublicRoomTest {
         command(admin, REQUESTER, 1, listener);
         command(listener, ADD, 41, null);
         assertEquals(1, service.append(listener, request, now += 1_000).imported());
-        for (var action : List.of(PLAY, PAUSE, STOP, SEEK, NEXT, MODE, REMOVE, CLEAR))
+        for (var action : List.of(PLAY, PAUSE, STOP, SEEK, NEXT, MODE, DURATION, REMOVE, CLEAR))
             denied("permission", () -> command(listener, action, 0, null));
         command(admin, DJ, 1, listener);
         command(listener, PLAY, 0, null); command(listener, PAUSE, 0, null);
@@ -97,7 +97,7 @@ class PublicRoomTest {
         join(service, listener); assertFalse(room().canRequest(listener));
         service.leave(admin);
         denied("member", () -> command(admin, REQUESTER, 1, listener));
-        var entry = update(service, admin).savedRooms().getFirst();
+        var entry = update(service, admin).savedRooms().get(0);
         denied("public_managed", () -> service.execute(admin, "Player",
                 new RoomCommand(DISSOLVE, entry.room(), entry.epoch(), -1, "", 0), null, now += 1_000));
     }
@@ -110,7 +110,7 @@ class PublicRoomTest {
         service.disconnect(admin); service.disconnect(listener); service.disconnect(other);
         assertTrue(room().members().isEmpty()); assertEquals(RoomSnapshot.State.STOPPED, room().state());
         assertEquals(List.of("42"), room().songs());
-        assertTrue(service.persistentRooms().getFirst().members().stream().noneMatch(RoomSnapshot.Member::administrator));
+        assertTrue(service.persistentRooms().get(0).members().stream().noneMatch(RoomSnapshot.Member::administrator));
         administrators.clear();
         var restarted = new RoomService(TeamDirectory.ABSENT, () -> 2, administrators::contains);
         restarted.restoreRooms(service.persistentRooms()); restarted.openPublicRoom();
@@ -131,7 +131,7 @@ class PublicRoomTest {
         service.execute(other, "Owner", new RoomCommand(INVITE, privateRoom.id(), privateRoom.epoch(), privateRoom.revision(), "", 0), admin, now += 1_000);
         service.execute(admin, "Player", new RoomCommand(JOIN, privateRoom.id(), privateRoom.epoch(), -1, "", 0), null, now += 1_000);
         assertFalse(service.current(admin).canManage(admin)); assertFalse(service.current(admin).canRequest(admin));
-        assertTrue(update(service, other).savedRooms().getFirst().isPublicRoom());
+        assertTrue(update(service, other).savedRooms().get(0).isPublicRoom());
         assertEquals(privateRoom.id(), update(service, other).savedRooms().get(1).room());
         denied("already_joined", () -> join(service, admin));
     }
@@ -153,5 +153,25 @@ class PublicRoomTest {
                 List.of(new RoomSnapshot.Member(admin, "Admin", true)), List.of(), -1, PlaybackMode.SEQUENTIAL));
         assertThrows(IllegalArgumentException.class, () -> new RoomService.PersistentRoom(RoomService.PUBLIC_ROOM_ID, "Public", RoomService.SERVER_OWNER,
                 List.of(new RoomSnapshot.Member(admin, "Admin", false, false, true)), List.of(), -1, PlaybackMode.SEQUENTIAL));
+    }
+
+    @Test void publicMembershipIsBoundedAndAReleasedSlotCanBeReused() {
+        var initial = room(); var joined = new ArrayList<UUID>();
+        for (int i = 0; i < RoomService.MAX_PUBLIC_MEMBERS; i++) {
+            UUID player = new UUID(123, i + 1); joined.add(player);
+            service.execute(player, "Player", new RoomCommand(JOIN, initial.id(), initial.epoch(), -1, "", 0), null, now += 1_000);
+        }
+        assertEquals(RoomService.MAX_PUBLIC_MEMBERS, room().members().size());
+        long revision = room().revision();
+        denied("public_full", () -> join(service, listener));
+        assertNull(service.current(listener)); assertEquals(revision, room().revision());
+        service.disconnect(joined.get(0)); join(service, listener);
+        assertEquals(RoomService.MAX_PUBLIC_MEMBERS, room().members().size());
+        assertTrue(service.current(listener).isPublicRoom());
+        // The online cap must not truncate historical membership grants on disk.
+        assertEquals(RoomService.MAX_PUBLIC_MEMBERS + 1, service.persistentRooms().get(0).members().size());
+        var restored = new RoomService(); restored.restoreRooms(service.persistentRooms());
+        assertTrue(restored.snapshots().get(0).members().isEmpty());
+        assertEquals(RoomService.MAX_PUBLIC_MEMBERS + 1, restored.persistentRooms().get(0).members().size());
     }
 }

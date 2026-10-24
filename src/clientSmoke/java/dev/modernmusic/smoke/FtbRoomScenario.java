@@ -16,14 +16,14 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.neoforge.network.PacketDistributor;
+import dev.modernmusic.network.ForgeNetwork;
 import static dev.modernmusic.room.RoomCommand.Action.*;
 
 /** Real FTB lifecycle with two actual players. Internal FTB mutations are fixtures only, never shipped. */
 final class FtbRoomScenario {
     private final boolean host;
     private final Path directory, peer;
-    private int stage, frames;
+    private int stage, frames, loggedStage = -1;
     private long since, nextLog;
     private UUID hostId, guestId;
     private RoomSnapshot oldRoom;
@@ -33,13 +33,21 @@ final class FtbRoomScenario {
         this.host = host; this.directory = directory; this.peer = peer;
     }
     String tick(Minecraft game, RoomClient rooms, PlaybackController player) throws Exception {
-        if (RoomNetwork.now() >= nextLog) {
+        if (stage != loggedStage || RoomNetwork.now() >= nextLog) {
+            loggedStage = stage;
             nextLog = RoomNetwork.now() + 10_000;
             ModernMusic.LOGGER.info("FTB smoke {} stage={} room={} team={} message={}", host ? "host" : "guest", stage,
                     rooms.update().room() == null ? "none" : rooms.update().room().revision(), rooms.update().team(), rooms.message());
         }
-        if (player.state() == PlaybackController.State.ERROR) throw new IllegalStateException(player.message());
-        return host ? host(game, rooms, player) : guest(game, rooms, player);
+        try {
+            if (player.state() == PlaybackController.State.ERROR) throw new IllegalStateException(player.message());
+            return host ? host(game, rooms, player) : guest(game, rooms, player);
+        } catch (Exception failure) {
+            String context = "FTB " + (host ? "host" : "guest") + " stage=" + stage
+                    + " room=" + rooms.update().room() + " " + screenState(game);
+            ModernMusic.LOGGER.error(context, failure);
+            throw new IllegalStateException(context + ": " + failure, failure);
+        }
     }
     private String host(Minecraft game, RoomClient rooms, PlaybackController player) throws Exception {
         var room = rooms.update().room();
@@ -74,8 +82,9 @@ final class FtbRoomScenario {
                 game.setScreen(new RoomScreen(null, rooms)); game.screen.tick();
                 var member = game.screen.children().stream().filter(AbstractWidget.class::isInstance).map(AbstractWidget.class::cast)
                         .filter(w -> w.getClass().getSimpleName().equals("MemberRow") && w.getMessage().getString().contains("RoomGuest"))
-                        .findFirst().orElseThrow();
+                        .findFirst().orElseThrow(() -> new IllegalStateException("RoomGuest member row missing: " + screenState(game)));
                 var screen = (dev.modernmusic.client.ui.MusicScreen) game.screen;
+                ModernMusic.LOGGER.info("FTB owner context menu before right-click: {}", screenState(game));
                 check(screen.mouseClicked(screen.toGuiCoordinate(member.getX() + 8), screen.toGuiCoordinate(member.getY() + 8), 1),
                         "Owner right-click did not open the member menu");
                 press(game, "modernmusic.room.dj");
@@ -205,7 +214,7 @@ final class FtbRoomScenario {
             }
             case 17 -> {
                 if (!peerSays("group") || rooms.update().invitations().isEmpty()) return null;
-                rooms.join(rooms.update().invitations().getFirst()); stage++;
+                rooms.join(rooms.update().invitations().get(0)); stage++;
             }
             case 18 -> { if (room != null) { check(!room.isTeamRoom(), "Ordinary group unavailable"); signal("group"); stage++; } }
             case 19 -> { if (peerSays("done")) return "PASS: explicit GUI join / late join / DJ seek and UI resume / forged control denied / DJ revoked / leave restores personal queue / rejoin / transfer / disband / group invitation"; }
@@ -216,7 +225,7 @@ final class FtbRoomScenario {
         check(!player.shared() && player.state() == PlaybackController.State.STOPPED && player.queue().entries().equals(List.of(new SongId(7))), "Revocation did not stop and restore local queue");
     }
     private void sendRaw(RoomSnapshot room, RoomCommand.Action action) {
-        PacketDistributor.sendToServer(new RoomNetwork.CommandPayload(RoomJson.encode(new RoomCommand(action, room.id(), room.epoch(), room.revision(), "", action == ADD ? 99 : 0))));
+        ForgeNetwork.sendToServer(new RoomNetwork.CommandPayload(RoomJson.encode(new RoomCommand(action, room.id(), room.epoch(), room.revision(), "", action == ADD ? 99 : 0))));
     }
     private void signal(String value) throws Exception { Files.writeString(directory.resolve("ftb-stage.txt"), value); }
     private boolean peerSays(String value) throws Exception { var file = peer.resolve("ftb-stage.txt"); return Files.exists(file) && Files.readString(file).equals(value); }
@@ -232,7 +241,20 @@ final class FtbRoomScenario {
     }
     private void press(Minecraft game, String key) {
         AbstractWidget button = game.screen.children().stream().filter(AbstractWidget.class::isInstance).map(AbstractWidget.class::cast)
-                .filter(w -> w.getMessage().getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents text && text.getKey().equals(key)).findFirst().orElseThrow();
-        check(button.active, "Disabled join button"); button.mouseClicked(button.getX() + 8, button.getY() + 8, 0);
+                .filter(w -> w.getMessage().getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents text && text.getKey().equals(key))
+                .findFirst().orElseThrow(() -> new IllegalStateException("Missing button " + key + ": " + screenState(game)));
+        check(button.active, "Disabled button " + key);
+        check(button.mouseClicked(button.getX() + 8, button.getY() + 8, 0), "Button did not accept click: " + key);
+    }
+    private static String screenState(Minecraft game) {
+        var screen = game.screen;
+        return "window=" + game.getWindow().getWidth() + "x" + game.getWindow().getHeight()
+                + " guiScale=" + game.getWindow().getGuiScale()
+                + " screen=" + (screen == null ? "none" : screen.getClass().getSimpleName()
+                + " viewport=" + screen.width + "x" + screen.height + " widgets=" + screen.children().stream()
+                .filter(AbstractWidget.class::isInstance).map(AbstractWidget.class::cast)
+                .map(widget -> widget.getClass().getSimpleName() + "[" + widget.getMessage().getString() + "]@"
+                        + widget.getX() + "," + widget.getY() + " active=" + widget.active + " visible=" + widget.visible)
+                .toList());
     }
 }

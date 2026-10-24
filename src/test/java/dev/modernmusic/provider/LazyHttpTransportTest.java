@@ -26,7 +26,8 @@ class LazyHttpTransportTest {
         var calls = new AtomicInteger();
         var client = new Client();
         var transport = new BoundedHttpTransport(() -> { calls.incrementAndGet(); return client; });
-        try (var workers = Executors.newFixedThreadPool(8)) {
+        var workers = Executors.newFixedThreadPool(8);
+        try {
             var ready = new CountDownLatch(8);
             var start = new CountDownLatch(1);
             var results = new ArrayList<Future<?>>();
@@ -38,22 +39,41 @@ class LazyHttpTransportTest {
             assertTrue(ready.await(2, TimeUnit.SECONDS)); start.countDown();
             for (var result : results) result.get(2, TimeUnit.SECONDS);
             assertEquals(1, calls.get()); assertEquals(8, client.sends.get());
-        } finally { transport.close(); }
+        } finally { workers.shutdownNow(); transport.close(); }
         transport.close();
-        assertEquals(1, client.shutdowns.get());
         assertThrows(CancellationException.class, () -> transport.get(URI, 16));
         assertEquals(8, client.sends.get());
     }
 
-    private static final class Client extends HttpClient {
-        final AtomicInteger sends = new AtomicInteger(), shutdowns = new AtomicInteger();
+    @Test void closeCancelsAnInFlightExchangeOnJava17() throws Exception {
+        var sent = new CountDownLatch(1);
+        var response = new CompletableFuture<HttpResponse<byte[]>>();
+        var client = new Client() {
+            @SuppressWarnings("unchecked")
+            @Override public <T> CompletableFuture<HttpResponse<T>> sendAsync(HttpRequest request, HttpResponse.BodyHandler<T> handler) {
+                sent.countDown();
+                return (CompletableFuture<HttpResponse<T>>) (CompletableFuture<?>) response;
+            }
+        };
+        var worker = Executors.newSingleThreadExecutor();
+        try (var transport = new BoundedHttpTransport(() -> client)) {
+            var request = worker.submit(() -> transport.get(URI, 16));
+            assertTrue(sent.await(2, TimeUnit.SECONDS));
+            transport.close();
+            assertTrue(response.isCancelled());
+            var failure = assertThrows(ExecutionException.class, () -> request.get(2, TimeUnit.SECONDS));
+            assertInstanceOf(CancellationException.class, failure.getCause());
+        } finally { worker.shutdownNow(); }
+    }
+
+    private static class Client extends HttpClient {
+        final AtomicInteger sends = new AtomicInteger();
         public <T> CompletableFuture<HttpResponse<T>> sendAsync(HttpRequest request, HttpResponse.BodyHandler<T> handler) {
-            assertEquals(0, shutdowns.get()); sends.incrementAndGet();
+            sends.incrementAndGet();
             return CompletableFuture.failedFuture(new MusicException(MusicError.NETWORK_ERROR));
         }
         public <T> CompletableFuture<HttpResponse<T>> sendAsync(HttpRequest r, HttpResponse.BodyHandler<T> h, HttpResponse.PushPromiseHandler<T> p) { return sendAsync(r, h); }
         public <T> HttpResponse<T> send(HttpRequest r, HttpResponse.BodyHandler<T> h) { throw new AssertionError("Blocking dispatch"); }
-        public void shutdownNow() { shutdowns.incrementAndGet(); }
         public Optional<CookieHandler> cookieHandler() { return Optional.empty(); }
         public Optional<Duration> connectTimeout() { return Optional.empty(); }
         public Redirect followRedirects() { return Redirect.NEVER; }

@@ -28,8 +28,8 @@ class MetadataRequestsTest {
         var result = provider.getTracks(songs);
         assertEquals(1, provider.started.size());
         assertTrue(result.cancel(true));
-        assertTrue(provider.requests.getFirst().isCancelled());
-        assertFalse(provider.requests.getFirst().complete(track(songs.getFirst())));
+        assertTrue(provider.requests.get(0).isCancelled());
+        assertFalse(provider.requests.get(0).complete(track(songs.get(0))));
         assertEquals(1, provider.started.size());
     }
 
@@ -53,7 +53,7 @@ class MetadataRequestsTest {
         var provider = new ControlledProvider();
         var songs = List.of(new SongId(1), new SongId(2));
         var result = provider.getTracks(songs);
-        provider.requests.getFirst().completeExceptionally(new MusicException(MusicError.UNAVAILABLE));
+        provider.requests.get(0).completeExceptionally(new MusicException(MusicError.UNAVAILABLE));
         assertEquals(2, provider.started.size());
         provider.requests.get(1).complete(track(songs.get(1)));
         assertEquals(List.of(track(songs.get(1))), result.join());
@@ -81,8 +81,9 @@ class MetadataRequestsTest {
         };
         var result = provider.getTracks(List.of(new SongId(1), new SongId(2), new SongId(3)));
         result.whenComplete((value, error) -> { if (result.isCancelled()) cancelled.countDown(); });
-        try (var threads = Executors.newFixedThreadPool(2)) {
-            var completing = threads.submit(() -> provider.requests.getFirst().complete(track(new SongId(1))));
+        var threads = Executors.newFixedThreadPool(2);
+        try {
+            var completing = threads.submit(() -> provider.requests.get(0).complete(track(new SongId(1))));
             assertTrue(publishing.await(2, TimeUnit.SECONDS));
             var cancellation = threads.submit(() -> result.cancel(true));
             try { assertTrue(cancelled.await(2, TimeUnit.SECONDS)); }
@@ -90,7 +91,7 @@ class MetadataRequestsTest {
             completing.get(2, TimeUnit.SECONDS); cancellation.get(2, TimeUnit.SECONDS);
             assertTrue(second.isCancelled());
             assertEquals(List.of(new SongId(1), new SongId(2)), provider.started);
-        } finally { release.countDown(); }
+        } finally { release.countDown(); threads.shutdownNow(); }
     }
 
     @Test void multiPlatformCancellationReachesEveryActivePlatformAndItsCurrentLookup() {
@@ -99,8 +100,8 @@ class MetadataRequestsTest {
         var result = provider.getTracks(List.of(new SongId(1), new SongId(2),
                 new SongId(3, MusicPlatform.QQ), new SongId(4, MusicPlatform.QQ)));
         assertTrue(result.cancel(true));
-        assertTrue(netease.requests.getFirst().isCancelled());
-        assertTrue(qq.requests.getFirst().isCancelled());
+        assertTrue(netease.requests.get(0).isCancelled());
+        assertTrue(qq.requests.get(0).isCancelled());
         assertEquals(1, netease.started.size()); assertEquals(1, qq.started.size());
     }
 
@@ -109,9 +110,9 @@ class MetadataRequestsTest {
         var provider = new MultiPlatformProvider(netease, qq);
         var first = new SongId(1); var second = new SongId(2, MusicPlatform.QQ);
         var result = provider.getTracks(List.of(second, first));
-        qq.requests.getFirst().complete(track(second));
+        qq.requests.get(0).complete(track(second));
         assertFalse(result.isDone());
-        netease.requests.getFirst().complete(track(first));
+        netease.requests.get(0).complete(track(first));
         assertEquals(List.of(track(first), track(second)), result.join());
 
         var rejecting = new ControlledProvider() {

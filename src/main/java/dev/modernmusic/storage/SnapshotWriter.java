@@ -1,18 +1,19 @@
 package dev.modernmusic.storage;
 
 import dev.modernmusic.provider.AsyncTasks;
+import java.util.Objects;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
-/** Serial writes coalesce pending edits; close waits for the newest submitted snapshot. */
+/** Serial, coalesced writes retain the latest failed snapshot and retry with capped backoff. */
 public final class SnapshotWriter<T> implements AutoCloseable {
     @FunctionalInterface public interface Write<T> { void accept(T snapshot) throws Exception; }
 
+    private static final int CLOSE_ATTEMPTS = 3;
     private final ExecutorService worker;
-    private final AtomicReference<T> waiting = new AtomicReference<>();
-    private final AtomicBoolean scheduled = new AtomicBoolean();
+    private final Object lock = new Object();
+    private T waiting;
+    private boolean scheduled, closed;
     private final Write<T> write;
     private final Runnable saved, failed;
 
@@ -23,29 +24,52 @@ public final class SnapshotWriter<T> implements AutoCloseable {
 
     /** Client loading shares the writer's executor so reads and later edits remain ordered. */
     public <R> CompletableFuture<R> load(Supplier<R> read) {
-        return CompletableFuture.supplyAsync(read, worker);
+        synchronized (lock) { return AsyncTasks.submit(worker, read); }
     }
 
     public void save(T snapshot) {
-        waiting.set(snapshot);
-        if (scheduled.compareAndSet(false, true)) worker.execute(this::drain);
+        Objects.requireNonNull(snapshot);
+        synchronized (lock) {
+            if (closed) return;
+            waiting = snapshot;
+            if (!scheduled) { scheduled = true; worker.execute(this::drain); }
+            lock.notifyAll();
+        }
     }
 
     private void drain() {
-        try {
+        int failures = 0, closingFailures = 0;
+        while (true) {
             T snapshot;
-            while ((snapshot = waiting.getAndSet(null)) != null) {
-                try { write.accept(snapshot); saved.run(); }
-                catch (Exception failure) { failed.run(); }
+            synchronized (lock) {
+                snapshot = waiting; waiting = null;
+                if (snapshot == null) { scheduled = false; return; }
             }
-        } finally {
-            scheduled.set(false);
-            if (waiting.get() != null && scheduled.compareAndSet(false, true)) drain();
+            try { write.accept(snapshot); saved.run(); failures = closingFailures = 0; }
+            catch (Exception failure) {
+                failed.run();
+                synchronized (lock) {
+                    // Newer edits supersede failed writes; recovery does not depend on another edit.
+                    if (waiting == null) waiting = snapshot;
+                    if (closed && ++closingFailures >= CLOSE_ATTEMPTS) { scheduled = false; return; }
+                    long delay = Math.min(5_000L, 100L << Math.min(failures++, 6));
+                    if (!closed && waiting == snapshot) {
+                        try { lock.wait(delay); }
+                        catch (InterruptedException interrupted) {
+                            Thread.currentThread().interrupt(); scheduled = false; return;
+                        }
+                    }
+                }
+            }
         }
     }
 
     @Override public void close() {
-        worker.shutdown();
+        synchronized (lock) {
+            closed = true;
+            lock.notifyAll(); // Do not spend the shutdown budget waiting for a retry deadline.
+            worker.shutdown();
+        }
         try { if (!worker.awaitTermination(5, TimeUnit.SECONDS)) { failed.run(); worker.shutdownNow(); } }
         catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); failed.run(); worker.shutdownNow(); }
     }

@@ -15,7 +15,7 @@ class SharedAdminControllerTest {
     final List<SharedAdminController.Request> sent = new ArrayList<>();
     final SharedAdminController admin = new SharedAdminController(sent::add, clock);
     SharedAdminSnapshot state(boolean cookieUpload) {
-        var request = sent.getLast();
+        var request = dev.modernmusic.compat.Java17.last(sent);
         return new SharedAdminSnapshot(request.view(), request.sequence(), true, true, cookieUpload,
                 false, false, false, false, false, true, false, "", "modernmusic.auth.qr_waiting", "fake-challenge", clock.millis() + 120000, "");
     }
@@ -31,18 +31,18 @@ class SharedAdminControllerTest {
         admin.open(); admin.receive(old); assertNull(admin.snapshot());
         admin.receive(state(true)); var previous = admin.snapshot();
         admin.request(ENABLE, ""); admin.receive(state(true)); admin.receive(previous);
-        assertEquals(sent.getLast().sequence(), admin.snapshot().acknowledgement());
+        assertEquals(dev.modernmusic.compat.Java17.last(sent).sequence(), admin.snapshot().acknowledgement());
     }
     @Test void insecureTransportRejectsCookieAndDiagnosticsNeverEchoCredentials() {
         admin.capability(true); admin.open(); admin.receive(state(false));
         int before = sent.size(); admin.request(COOKIE_LOGIN, "MUSIC_U=private-test-secret"); assertEquals(before, sent.size());
         admin.receive(state(true)); admin.request(COOKIE_LOGIN, "MUSIC_U=private-test-secret");
-        assertEquals("MUSIC_U=private-test-secret", sent.getLast().value());
-        assertFalse(sent.getLast().toString().contains("private-test-secret"));
-        admin.request(ENABLE, ""); assertEquals(COOKIE_LOGIN, sent.getLast().action());
+        assertEquals("MUSIC_U=private-test-secret", dev.modernmusic.compat.Java17.last(sent).value());
+        assertFalse(dev.modernmusic.compat.Java17.last(sent).toString().contains("private-test-secret"));
+        admin.request(ENABLE, ""); assertEquals(COOKIE_LOGIN, dev.modernmusic.compat.Java17.last(sent).action());
     }
     @Test void heartbeatRenewsAndMissingRepliesTimeoutEvenWithPeriodicSnapshots() {
-        open(); clock.value = clock.value.plusSeconds(3); admin.tick(); assertEquals(KEEPALIVE, sent.getLast().action());
+        open(); clock.value = clock.value.plusSeconds(3); admin.tick(); assertEquals(KEEPALIVE, dev.modernmusic.compat.Java17.last(sent).action());
         var old = admin.snapshot();
         clock.value = clock.value.plusSeconds(11); admin.capability(true); admin.receive(old); admin.tick();
         assertFalse(admin.waiting()); assertFalse(admin.snapshot().editing()); assertEquals("", admin.snapshot().qrKey());
@@ -74,8 +74,8 @@ class SharedAdminControllerTest {
             case NETEASE -> "MUSIC_U=netease-fixture";
             case QQ -> "uin=123; qqmusic_key=qq-fixture";
             case KUGOU -> "userid=456; token=kugou-fixture"; case LOCAL -> throw new AssertionError();
-        }, sent.getLast().value());
-        assertFalse(sent.getLast().toString().contains("fixture"));
+        }, dev.modernmusic.compat.Java17.last(sent).value());
+        assertFalse(dev.modernmusic.compat.Java17.last(sent).toString().contains("fixture"));
     }
     @Test void malformedJsonNeverLeavesClient() {
         open(); int before = sent.size();
@@ -90,7 +90,7 @@ class SharedAdminControllerTest {
                  {"domain":".kugou.com","name":"KugooID","value":"123"},
                  {"domain":".kugou.com","name":"t","value":"fixture"}]
                 """);
-        assertEquals("userid=123; token=fixture; appid=1014", sent.getLast().value());
-        assertFalse(sent.getLast().toString().contains("fixture"));
+        assertEquals("userid=123; token=fixture; appid=1014", dev.modernmusic.compat.Java17.last(sent).value());
+        assertFalse(dev.modernmusic.compat.Java17.last(sent).toString().contains("fixture"));
     }
 }

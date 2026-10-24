@@ -131,9 +131,9 @@ public final class HudEditorScreen extends Screen {
         if (sizeSlider != null) sizeSlider.syncValue((current().scale() - .25) / 2.75);
         if (opacitySlider != null) opacitySlider.syncValue(1 - current().opacity());
     }
-    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g, int x, int y, float delta) { if (net.minecraft.client.Minecraft.getInstance().level == null) renderPanorama(g, delta); }
+    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g) { if (net.minecraft.client.Minecraft.getInstance().level == null) renderDirtBackground(g); }
     @ParametersAreNonnullByDefault @Override public void render(GuiGraphics g, int x, int y, float delta) {
-        renderBackground(g, x, y, delta);
+        renderBackground(g);
         MusicHud.render(g, player, settings, width, height, true);
         for (var part : HudSettings.Part.values()) {
             var transform = settings.component(part);
@@ -147,7 +147,7 @@ public final class HudEditorScreen extends Screen {
             if (part == selected) {
                 String label = tr(part.key()).getString() + " · " + Math.round(transform.scale() * 100) + "%";
                 int labelWidth = font.width(label) + 12;
-                int labelX = Math.clamp(left - 2, 2, Math.max(2, width - labelWidth - 2)), labelY = Math.max(1, top - 16);
+                int labelX = dev.modernmusic.compat.Java17.clamp(left - 2, 2, Math.max(2, width - labelWidth - 2)), labelY = Math.max(1, top - 16);
                 surface(g, labelX, labelY, labelWidth, 13, 6.5f, alpha(TOOLTIP, .92));
                 g.drawString(font, label, labelX + 6, labelY + 3, 0xFFFFFFFF, false);
                 if (part != HudSettings.Part.LYRICS) {
@@ -234,12 +234,12 @@ public final class HudEditorScreen extends Screen {
         dragging = resizing = guideX = guideY = false;
         return super.mouseReleased(x, y, button) || handled;
     }
-    @Override public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
+    @Override public boolean mouseScrolled(double x, double y, double vertical) {
         if (!inPanel(x, y)) {
             var part = hit(x, y);
             if (part != null) { if (part != selected) select(part); rescale(current().scale() + vertical * .05); syncSliders(); return true; }
         }
-        return super.mouseScrolled(x, y, horizontal, vertical);
+        return super.mouseScrolled(x, y, vertical);
     }
     @Override public boolean keyPressed(int key, int scan, int modifiers) {
         if (key == GLFW.GLFW_KEY_H) { togglePanel(); return true; }

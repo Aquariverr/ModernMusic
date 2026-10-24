@@ -137,7 +137,7 @@ public final class ArtworkCache implements AutoCloseable {
         float cx = Math.max(0, Math.max(radius - (x + .5f), (x + .5f) - (SIZE - radius)));
         float cy = Math.max(0, Math.max(radius - (y + .5f), (y + .5f) - (SIZE - radius)));
         double distance = Math.hypot(cx, cy) - radius;
-        return (float) Math.clamp(.5 - distance, 0, 1);
+        return (float) dev.modernmusic.compat.Java17.clamp(.5 - distance, 0, 1);
     }
     private static int[] decode(byte[] bytes) {
         if (Thread.currentThread().isInterrupted()) throw new CancellationException();

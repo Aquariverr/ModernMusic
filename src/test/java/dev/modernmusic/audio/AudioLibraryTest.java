@@ -48,7 +48,7 @@ class AudioLibraryTest {
         Path target = directory.resolve("selected.wav");
         Files.write(target, wave(100));
         var library = new AudioLibrary(directory);
-        var id = library.list().getFirst().id();
+        var id = library.list().get(0).id();
         Files.write(target, wave(200));
         assertEquals(200, library.getTrack(id).orElseThrow().durationMs());
         assertEquals(200, AudioFiles.decode(library.readAudio(id).bytes(), "selected.wav").durationMs());
@@ -66,7 +66,7 @@ class AudioLibraryTest {
         Path target = directory.resolve("selected.wav"), replacement = directory.resolve("replacement.wav");
         Files.write(target, wave(100));
         var library = new AudioLibrary(directory);
-        var id = library.list().getFirst().id();
+        var id = library.list().get(0).id();
         var before = Files.readAttributes(target, BasicFileAttributes.class);
         Files.write(replacement, AudioFilesTest.wave(1, 1, 16000, 16, new byte[1600]));
         Files.setLastModifiedTime(replacement, before.lastModifiedTime());
@@ -83,7 +83,7 @@ class AudioLibraryTest {
         Path target = libraryPath.resolve("selected.wav"), outside = directory.resolve("outside.wav");
         Files.write(target, wave(100)); Files.write(outside, wave(200));
         var library = new AudioLibrary(libraryPath);
-        var id = library.list().getFirst().id();
+        var id = library.list().get(0).id();
         Files.delete(target);
         try { Files.createSymbolicLink(target, outside); }
         catch (UnsupportedOperationException | IOException | SecurityException exception) {

@@ -158,7 +158,7 @@ public final class LocalAudioProvider implements MusicProvider {
         if (matches.isEmpty()) matches = tracks.stream().filter(track -> matchesName(name, track.title())).toList();
         if (matches.isEmpty()) throw new MusicException(MusicError.AUDIO_NOT_FOUND);
         if (matches.size() != 1) throw new MusicException(MusicError.AUDIO_AMBIGUOUS);
-        return matches.getFirst();
+        return matches.get(0);
     }
     private static boolean matchesName(String query, String filename) {
         return query.equalsIgnoreCase(filename) || stem(query).equalsIgnoreCase(stem(filename));

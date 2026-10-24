@@ -36,7 +36,7 @@ public final class ThemeScreen extends MusicScreen {
         panelHeight = Math.min(44 + rows * (64 + gap) + 36 + 34, height - 16);
         left = (width - panelWidth) / 2; top = (height - panelHeight) / 2;
         gridY = top + 44; footerY = top + panelHeight - 32;
-        tileHeight = Math.clamp((footerY - 30 - gridY - (rows - 1L) * gap) / rows, 30, 64);
+        tileHeight = dev.modernmusic.compat.Java17.clamp((footerY - 30 - gridY - (rows - 1L) * gap) / rows, 30, 64);
         int tileWidth = (panelWidth - 24 - (columns - 1) * gap) / columns;
         for (var theme : Theme.values()) {
             int column = theme.ordinal() % columns, row = theme.ordinal() / columns;
@@ -58,9 +58,8 @@ public final class ThemeScreen extends MusicScreen {
         PlayerTheme.apply(originalTheme); UiFont.smooth(originalFont == HudSettings.FontStyle.SMOOTH);
         client().setScreen(parent);
     }
-    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g, int x, int y, float delta) {
-        if (client().level == null) renderPanorama(g, delta);
-        renderBlurredBackground(delta);
+    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g) {
+        if (client().level == null) renderDirtBackground(g);
         scrim(g, width, height);
         panel(g, left, top, panelWidth, panelHeight, 12);
         header(g, left, top, panelWidth, 32);

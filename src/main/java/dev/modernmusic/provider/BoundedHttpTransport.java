@@ -20,6 +20,7 @@ public final class BoundedHttpTransport implements HttpTransport, AutoCloseable 
     private static final String QR_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/91.0.4472.164 NeteaseMusicDesktop/3.1.6";
     private final java.util.function.Supplier<HttpClient> clientFactory;
     private HttpClient client;
+    private final java.util.Set<CompletableFuture<?>> requests = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private boolean closed;
 
     public BoundedHttpTransport() {
@@ -32,7 +33,10 @@ public final class BoundedHttpTransport implements HttpTransport, AutoCloseable 
     private synchronized CompletableFuture<HttpResponse<byte[]>> send(HttpRequest request, int maxBytes) {
         if (closed) throw new java.util.concurrent.CancellationException();
         if (client == null) client = clientFactory.get();
-        return client.sendAsync(request, info -> new LimitedBody(maxBytes));
+        var pending = client.sendAsync(request, info -> new LimitedBody(maxBytes));
+        requests.add(pending);
+        pending.whenComplete((result, failure) -> requests.remove(pending));
+        return pending;
     }
 
     @Override
@@ -242,7 +246,11 @@ public final class BoundedHttpTransport implements HttpTransport, AutoCloseable 
     @Override public synchronized void close() {
         if (closed) return;
         closed = true;
-        if (client != null) client.shutdownNow();
+        // Java 17 HttpClient has no shutdown API. Cancel every in-flight exchange and release it.
+        var pending = List.copyOf(requests);
+        requests.clear();
+        client = null;
+        pending.forEach(request -> request.cancel(true));
     }
 
     static final class LimitedBody implements HttpResponse.BodySubscriber<byte[]> {

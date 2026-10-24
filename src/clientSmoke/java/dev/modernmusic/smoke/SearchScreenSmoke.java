@@ -13,14 +13,13 @@ import net.minecraft.client.*;
 import net.minecraft.client.gui.components.*;
 import net.minecraft.client.gui.screens.*;
 import net.minecraft.network.chat.contents.TranslatableContents;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.fml.common.Mod;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.common.NeoForge;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.common.MinecraftForge;
 import org.lwjgl.glfw.GLFW;
 
 /** Deterministic real-client UI check; no account credentials or audio playback. */
-@Mod(value = "modernmusic_smoke", dist = Dist.CLIENT)
 public final class SearchScreenSmoke {
     private PlaybackController player;
     private final Fixture provider = new Fixture();
@@ -30,9 +29,10 @@ public final class SearchScreenSmoke {
     private int step, frames;
     private long deadline = System.nanoTime() + TimeUnit.MINUTES.toNanos(4);
     public SearchScreenSmoke() {
-        if (Boolean.getBoolean("modernmusic.searchSmoke")) NeoForge.EVENT_BUS.addListener(this::tick);
+        if (Boolean.getBoolean("modernmusic.searchSmoke")) MinecraftForge.EVENT_BUS.addListener(this::tick);
     }
-    private void tick(ClientTickEvent.Post event) {
+    private void tick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
         if (step < 0) return;
         var game = Minecraft.getInstance();
         try {
@@ -40,7 +40,7 @@ public final class SearchScreenSmoke {
             if (game.getOverlay() != null || frames-- > 0) return;
             switch (step) {
                 case 0 -> {
-                    if (game.screen instanceof AccessibilityOnboardingScreen) { game.options.onboardingAccessibilityFinished(); game.setScreen(new TitleScreen()); }
+                    if (game.screen instanceof AccessibilityOnboardingScreen) {  game.setScreen(new TitleScreen()); }
                     if (!(game.screen instanceof TitleScreen)) return;
                     if (!game.options.languageCode.equals("zh_cn")) {
                         game.options.languageCode = "zh_cn"; game.getLanguageManager().setSelected("zh_cn"); game.reloadResourcePacks(); return;
@@ -138,7 +138,7 @@ public final class SearchScreenSmoke {
                     capture("link-netease-names-wide.png");
                     player.close();
                     player = new PlaybackController(new MultiPlatformProvider(new Fixture(), qqLink, kugouLink), (uri, max) -> new byte[0], new SilentOutput(), game::execute);
-                    player.addSearchTracks(player.searchDestinations().getFirst(), List.of(track(42))).join();
+                    player.addSearchTracks(player.searchDestinations().get(0), List.of(track(42))).join();
                     player.switchPlatform();
                     game.getWindow().setWindowed(1600, 900); game.resizeDisplay();
                     game.setScreen(new PlayerScreen(game.screen, player)); step = 17; frames = 8;
@@ -267,7 +267,7 @@ public final class SearchScreenSmoke {
     private void capture(String name) throws Exception {
         var game = Minecraft.getInstance(); var screen = game.screen;
         for (var child : screen.children()) if (child instanceof AbstractWidget widget && widget.visible
-                && (widget.getX() < 0 || widget.getY() < 0 || widget.getRight() > screen.width || widget.getBottom() > screen.height))
+                && (widget.getX() < 0 || widget.getY() < 0 || SmokeCompat.right(widget) > screen.width || SmokeCompat.bottom(widget) > screen.height))
             throw new IllegalStateException("Widget outside viewport");
         try (var frame = Screenshot.takeScreenshot(game.getMainRenderTarget())) { frame.writeToFile(Path.of(name)); }
     }

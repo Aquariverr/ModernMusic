@@ -328,6 +328,7 @@
   "modernmusic.room.error.rate": "Too many actions. Try again shortly.",
   "modernmusic.room.error.already_joined": "Leave your current room first.",
   "modernmusic.room.error.full": "Room, invitation or queue limit reached.",
+  "modernmusic.room.error.public_full": "The server public room is full (1,000 listeners). Try again after someone leaves.",
   "modernmusic.room.error.duplicate": "This song is already in the room queue.",
   "modernmusic.room.error.input": "Invalid input or action. Check and try again.",
   "modernmusic.room.error.missing": "This room has closed.",

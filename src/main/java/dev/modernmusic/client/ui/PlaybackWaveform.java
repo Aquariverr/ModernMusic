@@ -13,7 +13,7 @@ final class PlaybackWaveform {
 
     void render(GuiGraphics g, PlaybackController player, int x, int y, int width, int height) {
         if (width < 8 || height < 2) return;
-        int count = Math.clamp(width / (pixel() ? 5 : 4), 2, 64);
+        int count = dev.modernmusic.compat.Java17.clamp(width / (pixel() ? 5 : 4), 2, 64);
         long now = Util.getMillis();
         if (target.length != count) {
             target = new float[count]; displayed = new float[count]; sampledAt = renderedAt = 0;
@@ -22,7 +22,7 @@ final class PlaybackWaveform {
         if (sampledAt == 0 || now - sampledAt >= 33) {
             player.sampleWaveform(target); sampledAt = now;
         }
-        float elapsed = renderedAt == 0 ? 16 : Math.clamp(now - renderedAt, 0, 100);
+        float elapsed = renderedAt == 0 ? 16 : dev.modernmusic.compat.Java17.clamp(now - renderedAt, 0, 100);
         renderedAt = now;
         float spacing = width / (float) count, barWidth = pixel() ? 3 : Math.min(3, spacing * .5f);
         UiRenderMetrics.beginWaveform();

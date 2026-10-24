@@ -1,0 +1,8 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+[[mods]]
+modId="modernmusic_optional_smoke"
+version="1"
+displayName="Modern Music Forge validation"
+displayTest="IGNORE_ALL_VERSION"

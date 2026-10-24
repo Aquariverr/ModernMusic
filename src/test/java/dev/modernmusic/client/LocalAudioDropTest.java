@@ -58,7 +58,7 @@ class LocalAudioDropTest {
         Files.createDirectory(library());
         Path existing = Files.write(library().resolve("existing.wav"), LocalAudioProviderTest.wav());
         try (var provider = new LocalAudioProvider(library(), Runnable::run, new DropRemote())) {
-            var before = provider.browseLocal().get(4, TimeUnit.SECONDS).getFirst();
+            var before = provider.browseLocal().get(4, TimeUnit.SECONDS).get(0);
             var result = provider.importDropped(List.of(existing, existing), false).get(4, TimeUnit.SECONDS);
             assertEquals(List.of(before, before), result.tracks()); assertTrue(result.failures().isEmpty());
             try (var entries = Files.list(library())) { assertEquals(1, entries.count()); }
@@ -76,7 +76,7 @@ class LocalAudioDropTest {
             Files.createDirectory(library());
             for (int i = 0; i < AudioFiles.MAX_LIBRARY_FILES; i++) Files.createFile(library().resolve("existing-" + i + ".txt"));
             var full = provider.importDropped(List.of(valid), false).get(4, TimeUnit.SECONDS);
-            assertTrue(full.tracks().isEmpty()); assertEquals(MusicError.RESOURCE_TOO_LARGE, full.failures().getFirst().error());
+            assertTrue(full.tracks().isEmpty()); assertEquals(MusicError.RESOURCE_TOO_LARGE, full.failures().get(0).error());
             assertFalse(Files.exists(library().resolve("new.wav")));
         }
     }
@@ -86,13 +86,13 @@ class LocalAudioDropTest {
         try (var sparse = new java.io.RandomAccessFile(oversized.toFile(), "rw")) { sparse.setLength((long) AudioFiles.MAX_AUDIO_BYTES + 1); }
         try (var provider = new LocalAudioProvider(library(), Runnable::run, new DropRemote())) {
             var result = provider.importDropped(List.of(oversized), false).get(4, TimeUnit.SECONDS);
-            assertEquals(MusicError.RESOURCE_TOO_LARGE, result.failures().getFirst().error());
+            assertEquals(MusicError.RESOURCE_TOO_LARGE, result.failures().get(0).error());
             assertFalse(Files.exists(library()));
             Path link = folder.resolve("linked.wav"), target = source("valid.wav", LocalAudioProviderTest.wav());
             try { Files.createSymbolicLink(link, target); }
             catch (UnsupportedOperationException | java.io.IOException | SecurityException unsupported) { return; }
             var linked = provider.importDropped(List.of(link), false).get(4, TimeUnit.SECONDS);
-            assertTrue(linked.tracks().isEmpty()); assertEquals(MusicError.RESOURCE_UNAVAILABLE, linked.failures().getFirst().error());
+            assertTrue(linked.tracks().isEmpty()); assertEquals(MusicError.RESOURCE_UNAVAILABLE, linked.failures().get(0).error());
             assertFalse(Files.exists(library()));
         }
     }
@@ -121,7 +121,7 @@ class LocalAudioDropTest {
         try (var provider = new LocalAudioProvider(library(), main::add, remote)) {
             var result = provider.importDropped(List.of(folder.resolve("nonexistent.wav")), true);
             drainUntil(main, result::isDone);
-            assertEquals(MusicError.SHARED_FORBIDDEN, result.join().failures().getFirst().error());
+            assertEquals(MusicError.SHARED_FORBIDDEN, result.join().failures().get(0).error());
             assertTrue(remote.uploads.isEmpty()); assertFalse(Files.exists(library()));
         }
     }
@@ -133,7 +133,7 @@ class LocalAudioDropTest {
             var result = provider.importDropped(List.of(first), true);
             remote.connection = UUID.randomUUID();
             drainUntil(main, result::isDone);
-            assertEquals(MusicError.RESOURCE_UNAVAILABLE, result.join().failures().getFirst().error());
+            assertEquals(MusicError.RESOURCE_UNAVAILABLE, result.join().failures().get(0).error());
             assertTrue(remote.uploads.isEmpty());
         }
     }
@@ -160,7 +160,7 @@ class LocalAudioDropTest {
             var result = provider.importDropped(List.of(first, second), true);
             drainUntil(main, () -> remote.uploads.size() == 1);
             result.cancel(true);
-            assertTrue(remote.uploads.getFirst().isCancelled());
+            assertTrue(remote.uploads.get(0).isCancelled());
             while (!main.isEmpty()) main.remove().run();
             assertEquals(1, remote.uploads.size()); assertTrue(result.isCancelled());
         }
@@ -171,7 +171,7 @@ class LocalAudioDropTest {
         Files.write(library().resolve("selected.wav"), LocalAudioProviderTest.wav());
         var remote = new DropRemote(); Queue<Runnable> main = new ConcurrentLinkedQueue<>();
         try (var provider = new LocalAudioProvider(library(), main::add, remote)) {
-            Track selected = provider.browseLocal().get(4, TimeUnit.SECONDS).getFirst();
+            Track selected = provider.browseLocal().get(4, TimeUnit.SECONDS).get(0);
             var result = provider.upload(selected);
             waitUntil(() -> !main.isEmpty());
             remote.connection = UUID.randomUUID();
@@ -187,7 +187,7 @@ class LocalAudioDropTest {
         Files.write(library().resolve("selected.wav"), LocalAudioProviderTest.wav());
         var remote = new DropRemote(); Queue<Runnable> main = new ConcurrentLinkedQueue<>();
         try (var provider = new LocalAudioProvider(library(), main::add, remote)) {
-            Track selected = provider.browseLocal().get(4, TimeUnit.SECONDS).getFirst();
+            Track selected = provider.browseLocal().get(4, TimeUnit.SECONDS).get(0);
             var result = provider.upload(selected);
             waitUntil(() -> !main.isEmpty());
             remote.allowed = false;

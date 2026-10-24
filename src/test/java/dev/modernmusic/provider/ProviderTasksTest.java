@@ -13,7 +13,8 @@ class ProviderTasksTest {
         var replacement = SessionCookie.parse("uin=456; qm_keyst=second", MusicPlatform.QQ);
         var credentials = new AtomicReference<>(original); var expired = new AtomicReference<SessionCookie>();
         var started = new CountDownLatch(1); var release = new CountDownLatch(1);
-        try (var worker = AsyncTasks.executor("test-account-snapshot", 1, 2)) {
+        var worker = AsyncTasks.executor("test-account-snapshot", 1, 2);
+        try {
             try {
                 worker.submit(() -> {
                     started.countDown();
@@ -29,11 +30,12 @@ class ProviderTasksTest {
                 assertEquals(MusicError.AUTH_EXPIRED, assertInstanceOf(MusicException.class, failure.getCause()).error());
                 assertSame(original, expired.get()); assertSame(replacement, credentials.get());
             } finally { release.countDown(); }
-        }
+        } finally { worker.shutdownNow(); }
     }
 
     @Test void preservesMusicErrorsAndMapsUnexpectedResponsesWithoutExpiringGuests() throws Exception {
-        try (var worker = AsyncTasks.executor("test-response-errors", 1, 2)) {
+        var worker = AsyncTasks.executor("test-response-errors", 1, 2);
+        try {
             for (var expected : new MusicError[]{MusicError.AUTH_EXPIRED, MusicError.UNAVAILABLE, MusicError.INVALID_RESPONSE}) {
                 var request = ProviderTasks.submit(worker, () -> null, cookie -> fail("Guest has no account to expire"), cookie -> {
                     if (expected == MusicError.INVALID_RESPONSE) throw new IllegalArgumentException("fixture");
@@ -42,6 +44,6 @@ class ProviderTasksTest {
                 var failure = assertThrows(ExecutionException.class, () -> request.get(2, TimeUnit.SECONDS));
                 assertEquals(expected, assertInstanceOf(MusicException.class, failure.getCause()).error());
             }
-        }
+        } finally { worker.shutdownNow(); }
     }
 }

@@ -24,7 +24,7 @@ public final class SharedAccountFixture {
         var current = network.getClass().getDeclaredField("accounts"); current.setAccessible(true);
         @SuppressWarnings("unchecked") var accountMap = (java.util.Map<MusicPlatform, ServerSharedAccount>) current.get(network);
         accountMap.get(MusicPlatform.NETEASE).close();
-        Path directory = server.getServerDirectory().resolve("m5-fixture-private");
+        Path directory = server.getServerDirectory().toPath().resolve("m5-fixture-private");
         new RememberedSessionStore(directory).clear();
         AccountProvider auth = new AccountProvider() {
             public AccountSession validate(SessionCookie cookie) {

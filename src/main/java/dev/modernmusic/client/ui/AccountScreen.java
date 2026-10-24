@@ -120,7 +120,7 @@ public final class AccountScreen extends MusicScreen {
             actions.add(button(layout == 2 ? "modernmusic.auth.remember" : "modernmusic.auth.unlock", left + 16, top + buttonY, half, () -> {
                 if (layout == 2) account.remember(); else account.restore();
             }, true));
-            if (layout == 2) actions.getLast().setTooltip(Tooltip.create(Component.translatable("modernmusic.auth.storage_help")));
+            if (layout == 2) dev.modernmusic.compat.Java17.last(actions).setTooltip(Tooltip.create(Component.translatable("modernmusic.auth.storage_help")));
             actions.add(button("modernmusic.auth.forget", left + 24 + half,
                     top + buttonY, half, account::forgetSaved, false));
     }
@@ -167,9 +167,8 @@ public final class AccountScreen extends MusicScreen {
             }
         }
     }
-    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g, int mx, int my, float partial) {
-        if (client().level == null) renderPanorama(g, partial);
-        renderBlurredBackground(partial);
+    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g) {
+        if (client().level == null) renderDirtBackground(g);
         scrim(g, width, height);
         panel(g, left, top, panelWidth, panelHeight, 12);
         PlayerTheme.header(g, left, top, panelWidth, 32);

@@ -4,7 +4,9 @@ import com.google.gson.Gson;
 
 /** Record constructors validate decoded data. Wire lengths are bounded before JSON parsing. */
 public final class RoomJson {
-    public static final int MAX_UPDATE_LENGTH = 262144;
+    // 1000 public members plus full invitations/directory/queue, including worst-case JSON escaping.
+    // FriendlyByteBuf's three-byte-per-character allowance remains below the 1 MiB custom payload cap.
+    public static final int MAX_UPDATE_LENGTH = 320 * 1024;
     private static final Gson JSON = new Gson();
     private RoomJson() {}
     public static String encode(Object value) { return JSON.toJson(value); }

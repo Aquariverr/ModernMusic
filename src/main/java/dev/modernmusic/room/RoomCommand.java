@@ -2,7 +2,7 @@ package dev.modernmusic.room;
 
 import java.util.UUID;
 
-/** Sender identity comes from the connection. DURATION uses playbackRevision and the current song ID as text. */
+/** Sender identity is supplied by the connection, not this object. */
 public record RoomCommand(Action action, UUID room, UUID epoch, long revision, String text, long value) {
     public enum Action {
         CREATE, INVITE, JOIN, JOIN_TEAM, LEAVE, DJ, KICK, ADD, REMOVE, CLEAR, PLAY, PAUSE, STOP, SEEK, NEXT, MODE, DURATION, SNAPSHOT, REQUESTER, DISSOLVE;

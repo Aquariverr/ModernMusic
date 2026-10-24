@@ -73,7 +73,7 @@ class KugouMusicProviderTest {
         try (var provider = new KugouMusicProvider(http, CLOCK, () -> null, ignored -> fail())) {
             var list = provider.getPlaylist(new SongId(123, MusicPlatform.KUGOU)).join();
             assertEquals(400, list.ids().size()); assertEquals(501, list.total()); assertEquals(4, pages.size()); assertTrue(list.ids().stream().allMatch(ID::equals));
-            assertTrue(pages.getLast().getQuery().contains("page=4"));
+            assertTrue(dev.modernmusic.compat.Java17.last(pages).getQuery().contains("page=4"));
         }
     }
     @Test void collectionMetadataUsesMillisecondsAndItsListName() {
@@ -82,7 +82,7 @@ class KugouMusicProviderTest {
                 SONG.replace("\"duration\":120", "\"timelen\":120123").replace("\"filename\"", "\"name\"") + "]}}";
         try (var provider = new KugouMusicProvider(http, CLOCK, () -> null, ignored -> fail())) {
             var list = provider.getPlaylist(new SongId("collection_3_123_4_0", MusicPlatform.KUGOU)).join();
-            assertEquals("List", list.name()); assertEquals(120123, list.tracks().getFirst().durationMs());
+            assertEquals("List", list.name()); assertEquals(120123, list.tracks().get(0).durationMs());
             assertTrue(http.uri.getQuery().contains("global_collection_id=collection_3_123_4_0"));
         }
     }

@@ -5,7 +5,7 @@ import dev.modernmusic.room.*;
 import java.util.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
-import net.neoforged.neoforge.network.PacketDistributor;
+import dev.modernmusic.network.ForgeNetwork;
 
 /** Client-thread room state and clock synchronization. */
 public final class RoomClient {
@@ -40,15 +40,12 @@ public final class RoomClient {
     }
     public boolean available() {
         var connection = Minecraft.getInstance().getConnection();
-        return connection != null && connection.hasChannel(RoomNetwork.CommandPayload.TYPE)
-                && connection.hasChannel(RoomNetwork.UpdatePayload.TYPE)
-                && connection.hasChannel(RoomNetwork.ClockPayload.TYPE);
+        return connection != null && ForgeNetwork.available(connection.getConnection());
     }
     private java.util.concurrent.CompletableFuture<RoomImportResult> importSongs(RoomImportRequest request) {
         var future = new java.util.concurrent.CompletableFuture<RoomImportResult>();
         var connection = Minecraft.getInstance().getConnection();
-        if (!available() || connection == null || !connection.hasChannel(RoomNetwork.ImportPayload.TYPE)
-                || !connection.hasChannel(RoomNetwork.ImportResultPayload.TYPE)) {
+        if (connection == null || !ForgeNetwork.available(connection.getConnection())) {
             future.complete(new RoomImportResult(request.request(), 0, request.total(), "modernmusic.room.unavailable")); return future;
         }
         if (!isCurrentRoom(request.room(), request.epoch())) {
@@ -63,7 +60,7 @@ public final class RoomClient {
         message = "";
         pendingImports.put(request.request(), new ImportWait(future, RoomNetwork.now() + 10_000, request.total()));
         future.whenComplete((result, error) -> pendingImports.remove(request.request()));
-        PacketDistributor.sendToServer(new RoomNetwork.ImportPayload(request));
+        ForgeNetwork.sendToServer(new RoomNetwork.ImportPayload(request));
         return future;
     }
     public RoomUpdate update() { return update; }
@@ -144,7 +141,7 @@ public final class RoomClient {
         }
         if (action == RoomCommand.Action.CREATE && room == null) listening = true;
         send(new RoomCommand(action, room == null ? null : room.id(), room == null ? null : room.epoch(),
-                room == null ? -1 : action == RoomCommand.Action.DURATION ? room.playbackRevision() : room.revision(), text, value));
+                room == null ? -1 : room.revision(), text, value));
     }
     public void join(RoomUpdate.Invitation invitation) {
         join(invitation.room(), invitation.epoch());
@@ -178,7 +175,7 @@ public final class RoomClient {
     }
     private void send(RoomCommand command) {
         if (!available()) { message = "modernmusic.room.unavailable"; return; }
-        message = ""; PacketDistributor.sendToServer(new RoomNetwork.CommandPayload(RoomJson.encode(command)));
+        message = ""; ForgeNetwork.sendToServer(new RoomNetwork.CommandPayload(RoomJson.encode(command)));
     }
     public void tick() {
         if (instance != this) return;
@@ -190,7 +187,7 @@ public final class RoomClient {
         for (var pending : List.copyOf(pendingImports.entrySet())) if (time >= pending.getValue().deadline()) {
             pending.getValue().future().complete(new RoomImportResult(pending.getKey(), 0, pending.getValue().total(), "modernmusic.room.import_timeout"));
         }
-        if (time >= nextPing) { sent = time; nextPing = time + (clock.ready() ? 5_000 : 500); PacketDistributor.sendToServer(new RoomNetwork.ClockPayload(sent, 0)); }
+        if (time >= nextPing) { sent = time; nextPing = time + (clock.ready() ? 5_000 : 500); ForgeNetwork.sendToServer(new RoomNetwork.ClockPayload(sent, 0)); }
         if (update.room() == null || !listening) return;
         if (lastReceived > 0 && time - lastReceived > 10_000) {
             if (!timedOut) { player.suspend(); timedOut = true; }
@@ -200,11 +197,14 @@ public final class RoomClient {
         var room = update.room();
         var localPlayer = Minecraft.getInstance().player;
         if (localPlayer == null) return;
-        long duration = player.roomDurationMs();
-        if (room.durationMs() == 0 && duration > 0 && time - durationAttempt >= 1_000
-                && room.allows(localPlayer.getUUID(), RoomCommand.Action.DURATION) && room.index() >= 0
-                && room.state() != RoomSnapshot.State.STOPPED) {
-            durationAttempt = time; command(RoomCommand.Action.DURATION, room.songs().get(room.index()), duration);
+        long duration = player.audio().durationMs();
+        if (time - durationAttempt >= 1_000 && room.canReportDuration(localPlayer.getUUID())
+                && duration > 0 && duration <= RoomDurationReport.MAX_DURATION_MS
+                && player.bufferedBytes() > 0 && player.track() != null
+                && player.track().id().toString().equals(room.songs().get(room.index()))) {
+            durationAttempt = time;
+            ForgeNetwork.sendToServer(new RoomNetwork.DurationPayload(new RoomDurationReport(room.id(), room.epoch(),
+                    room.playbackRevision(), room.songs().get(room.index()), duration)));
         }
     }
     public void disconnect() {

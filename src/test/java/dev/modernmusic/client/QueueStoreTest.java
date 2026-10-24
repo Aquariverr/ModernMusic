@@ -23,7 +23,7 @@ class QueueStoreTest {
             assertEquals(List.of(new SongId(1), new SongId(1), new SongId(2)), restored.active().queue().entries());
             assertEquals(1, restored.active().queue().index()); assertEquals(PlaybackMode.SHUFFLE, restored.active().queue().mode());
             assertFalse(restored.active().queue().add(new SongId(1)));
-            assertEquals(track, snapshot.tracks().getFirst());
+            assertEquals(track, snapshot.tracks().get(0));
         }
     }
     @Test void closeFlushesNewestSnapshotAfterRapidMutations() throws Exception {
@@ -33,7 +33,7 @@ class QueueStoreTest {
             library.rename("Final name"); store.save(library.snapshot(List.of()));
         }
         try (var store = new QueueStore(file)) {
-            var queue = store.load().join().queues().getFirst(); assertEquals(400, queue.songs().size()); assertEquals("Final name", queue.name());
+            var queue = store.load().join().queues().get(0); assertEquals(400, queue.songs().size()); assertEquals("Final name", queue.name());
         }
         try (var files = Files.list(directory)) { assertEquals(1, files.count()); }
     }
@@ -59,11 +59,11 @@ class QueueStoreTest {
         try (var store = new QueueStore(file)) {
             var restored = store.load().join();
             assertEquals(expected, restored); assertFalse(store.failed());
-            assertEquals(1, restored.queues().getFirst().selected());
-            assertEquals(PlaybackMode.SHUFFLE, restored.queues().getFirst().mode());
+            assertEquals(1, restored.queues().get(0).selected());
+            assertEquals(PlaybackMode.SHUFFLE, restored.queues().get(0).mode());
             assertTrue(restored.tracks().contains(localTrack)); assertTrue(restored.tracks().contains(serverTrack));
-            assertTrue(restored.queues().getFirst().songs().get(3).isClientLocal());
-            assertTrue(restored.queues().getFirst().songs().get(4).isServerAudio());
+            assertTrue(restored.queues().get(0).songs().get(3).isClientLocal());
+            assertTrue(restored.queues().get(0).songs().get(4).isServerAudio());
         }
     }
     @Test void corruptOriginalIsPreservedBeforeNewEditsReplaceIt() throws Exception {

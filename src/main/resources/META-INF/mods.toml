@@ -1,0 +1,37 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+
+[[mods]]
+modId="modernmusic"
+version="${mod_version}"
+displayName="Modern Music"
+logoFile="icon.png"
+authors="Aquariverr"
+displayTest="IGNORE_ALL_VERSION"
+description='''
+在 Minecraft 中播放网易云音乐、QQ 音乐、酷狗音乐和本地音频。
+支持歌曲搜索、歌单导入、歌词显示和多人同步收听。
+进入世界后按 Ctrl+M 打开播放器。
+'''
+
+[[dependencies.modernmusic]]
+modId="forge"
+mandatory=true
+versionRange="[47.2,48)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.modernmusic]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20.1]"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.modernmusic]]
+modId="ftbteams"
+mandatory=false
+versionRange="[2001.3.1,2002)"
+ordering="AFTER"
+side="BOTH"

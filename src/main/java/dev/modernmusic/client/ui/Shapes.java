@@ -30,6 +30,12 @@ public final class Shapes {
 
     private Shapes() {}
 
+    static BufferBuilder beginBuffer() {
+        var buffer = Tesselator.getInstance().getBuilder();
+        buffer.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
+        return buffer;
+    }
+
     public static void shader(ShaderInstance loaded) { shader = loaded; }
     /** The shader for UI shapes and icons: every non-zero alpha is kept, so soft fades stay smooth. */
     static ShaderInstance shader() { return shader != null ? shader : GameRenderer.getPositionTexColorShader(); }
@@ -84,7 +90,7 @@ public final class Shapes {
         private BufferBuilder buffer(Tile next) {
             if (!started) { graphics.flush(); started = true; }
             if (texture != next) { flush(); texture = next; }
-            if (buffer == null) buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
+            if (buffer == null) buffer = Shapes.beginBuffer();
             return buffer;
         }
 
@@ -114,9 +120,9 @@ public final class Shapes {
         int x0 = Math.round((x * pose.m00() + pose.m30()) * gui), x1 = Math.round(((x + w) * pose.m00() + pose.m30()) * gui);
         int y0 = Math.round((y * pose.m11() + pose.m31()) * gui), y1 = Math.round(((y + h) * pose.m11() + pose.m31()) * gui);
         if (x1 <= x0 || y1 <= y0) return;
-        int r = Math.clamp(Math.round(radius * scale), 0, Math.min(x1 - x0, y1 - y0) / 2);
+        int r = dev.modernmusic.compat.Java17.clamp(Math.round(radius * scale), 0, Math.min(x1 - x0, y1 - y0) / 2);
         // Blur reaches equally inside the edge, so it must fit within half the shape.
-        int soft = Math.clamp(Math.round(blur * scale), 0, Math.min(x1 - x0, y1 - y0) / 2 - r);
+        int soft = dev.modernmusic.compat.Java17.clamp(Math.round(blur * scale), 0, Math.min(x1 - x0, y1 - y0) / 2 - r);
         int border = ring == 0 ? 0 : Math.min(ring, Math.min(x1 - x0, y1 - y0) / 2);
         Tile tile = tile(new Key(r, soft, border));
         int n = tile.size - 1;
@@ -127,7 +133,7 @@ public final class Shapes {
 
         if (batch == null) g.flush();
         var matrix = batch == null ? new Matrix4f().translation(0, 0, pose.m32()).scale(1 / gui, 1 / gui, 1) : batch.matrix;
-        BufferBuilder buffer = batch == null ? Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR) : batch.buffer(tile);
+        BufferBuilder buffer = batch == null ? Shapes.beginBuffer() : batch.buffer(tile);
         float size = tile.size;
         for (int row = 0; row < 3; row++) {
             if (ys[row + 1] <= ys[row]) continue;
@@ -137,17 +143,17 @@ public final class Shapes {
                 float u0 = us[column * 2] / size, u1 = us[column * 2 + 1] / size;
                 float v0 = vs[row * 2] / size, v1 = vs[row * 2 + 1] / size;
                 int c0 = mix(top, bottom, (ys[row] - oy0) / (float) (oy1 - oy0)), c1 = mix(top, bottom, (ys[row + 1] - oy0) / (float) (oy1 - oy0));
-                buffer.addVertex(matrix, xs[column], ys[row], 0).setUv(u0, v0).setColor(c0);
-                buffer.addVertex(matrix, xs[column], ys[row + 1], 0).setUv(u0, v1).setColor(c1);
-                buffer.addVertex(matrix, xs[column + 1], ys[row + 1], 0).setUv(u1, v1).setColor(c1);
-                buffer.addVertex(matrix, xs[column + 1], ys[row], 0).setUv(u1, v0).setColor(c0);
+                buffer.vertex(matrix, xs[column], ys[row], 0).uv(u0, v0).color(c0).endVertex();
+                buffer.vertex(matrix, xs[column], ys[row + 1], 0).uv(u0, v1).color(c1).endVertex();
+                buffer.vertex(matrix, xs[column + 1], ys[row + 1], 0).uv(u1, v1).color(c1).endVertex();
+                buffer.vertex(matrix, xs[column + 1], ys[row], 0).uv(u1, v0).color(c0).endVertex();
             }
         }
         if (batch == null) submit(buffer, tile);
     }
 
     private static void submit(BufferBuilder buffer, Tile tile) {
-        var mesh = buffer.build();
+        var mesh = buffer.end();
         if (mesh == null) return;
         RenderSystem.setShaderTexture(0, tile.texture);
         RenderSystem.setShader(Shapes::shader);
@@ -223,7 +229,7 @@ public final class Shapes {
     }
 
     private static double smoothstep(double edge0, double edge1, double value) {
-        double t = Math.clamp((value - edge0) / (edge1 - edge0), 0, 1);
+        double t = dev.modernmusic.compat.Java17.clamp((value - edge0) / (edge1 - edge0), 0, 1);
         return t * t * (3 - 2 * t);
     }
 

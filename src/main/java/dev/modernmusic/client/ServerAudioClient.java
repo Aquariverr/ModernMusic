@@ -9,7 +9,7 @@ import dev.modernmusic.server.AudioTransfer;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import net.minecraft.client.Minecraft;
-import net.neoforged.neoforge.network.PacketDistributor;
+import dev.modernmusic.network.ForgeNetwork;
 
 /** Current-connection audio catalogue and bounded transfers; discarded completely on disconnect. */
 public final class ServerAudioClient {
@@ -27,7 +27,7 @@ public final class ServerAudioClient {
     }
     private static boolean transportAvailable() {
         var connection = Minecraft.getInstance().getConnection();
-        return connection != null && connection.hasChannel(CommandPayload.TYPE) && connection.hasChannel(StatePayload.TYPE) && connection.hasChannel(ReplyPayload.TYPE);
+        return connection != null && ForgeNetwork.available(connection.getConnection());
     }
     public static synchronized boolean available() { return session != null && transportAvailable(); }
     public static synchronized UUID connectionToken() { return available() ? connectionToken : null; }
@@ -128,7 +128,7 @@ public final class ServerAudioClient {
                 }
                 case DOWNLOAD_BEGIN -> {
                     require(request.command == Command.DOWNLOAD && request.download == null && value.tracks().size() == 1
-                            && value.tracks().getFirst().id().toString().equals(request.value));
+                            && value.tracks().get(0).id().toString().equals(request.value));
                     request.download = new AudioTransfer(value.total(), true, request.touched);
                     request.retry.begin(request.touched);
                 }
@@ -145,7 +145,7 @@ public final class ServerAudioClient {
                 }
                 case UPLOADED -> {
                     require(request.command == Command.UPLOAD_BEGIN && request.sentEnd && value.tracks().size() == 1);
-                    var track = value.tracks().getFirst(); var updated = new ArrayList<>(tracks); updated.removeIf(item -> item.id().equals(track.id())); updated.add(track);
+                    var track = value.tracks().get(0); var updated = new ArrayList<>(tracks); updated.removeIf(item -> item.id().equals(track.id())); updated.add(track);
                     tracks = List.copyOf(updated); complete(request, track);
                 }
             }
@@ -169,7 +169,7 @@ public final class ServerAudioClient {
         Minecraft.getInstance().execute(() -> {
             synchronized (ServerAudioClient.class) {
                 if (current != null && current.equals(session) && transportAvailable())
-                    PacketDistributor.sendToServer(new CommandPayload(current, request.id, command, request.value, total, offset, bytes));
+                    ForgeNetwork.sendToServer(new CommandPayload(current, request.id, command, request.value, total, offset, bytes));
             }
         });
     }

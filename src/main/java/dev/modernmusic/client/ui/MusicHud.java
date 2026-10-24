@@ -66,7 +66,7 @@ public final class MusicHud {
                 int slot = Math.max(font.width(current), font.width(total)), left = slot + 6, bar = part.width - 2 * left;
                 worldText(g, font, current, slot - font.width(current), 7, muted);
                 worldText(g, font, total, part.width - slot, 7, muted);
-                float fraction = (float) Math.clamp((double) position / Math.max(1, duration), 0, 1);
+                float fraction = (float) dev.modernmusic.compat.Java17.clamp((double) position / Math.max(1, duration), 0, 1);
                 if (skin() != null) {
                     // The skin's own gauge: its slider rail with the fill, without the handle.
                     int rail = spriteSize(skin(), Skin.Part.SLIDER_TRACK, true), fill = Math.round(bar * fraction);
@@ -113,7 +113,7 @@ public final class MusicHud {
         worldText(g, font, sequence, 0, y, color);
         if (smoothBold) g.drawString(font, sequence, bold, y, color, false);
     }
-    static int alpha(int color, double opacity) { return (color & 0xFFFFFF) | Math.max(4, (int) Math.round(255 * Math.clamp(opacity, 0, 1))) << 24; }
+    static int alpha(int color, double opacity) { return (color & 0xFFFFFF) | Math.max(4, (int) Math.round(255 * dev.modernmusic.compat.Java17.clamp(opacity, 0, 1))) << 24; }
     static String text(String key) { return Component.translatable(key).getString(); }
     static String time(long ms) {
         long sec = Math.max(0, ms) / 1000, remainder = sec % 60;

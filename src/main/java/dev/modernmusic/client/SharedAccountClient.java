@@ -7,7 +7,7 @@ import dev.modernmusic.domain.MusicPlatform;
 import java.util.*;
 import java.time.Clock;
 import net.minecraft.client.Minecraft;
-import net.neoforged.neoforge.network.PacketDistributor;
+import dev.modernmusic.network.ForgeNetwork;
 
 public final class SharedAccountClient {
     private static final Map<MusicPlatform, SharedPlaybackSource> sources = new EnumMap<>(MusicPlatform.class);
@@ -41,15 +41,11 @@ public final class SharedAccountClient {
     /** Support belongs to the current connection, independently of account readiness or permissions. */
     public static boolean available() {
         var connection = Minecraft.getInstance().getConnection();
-        return connection != null && connection.hasChannel(SharedAccountNetwork.RequestPayload.TYPE)
-                && connection.hasChannel(SharedAccountNetwork.StatePayload.TYPE)
-                && connection.hasChannel(SharedAccountNetwork.ResultPayload.TYPE);
+        return connection != null && ForgeNetwork.available(connection.getConnection());
     }
     public static boolean adminAvailable() {
         var connection = Minecraft.getInstance().getConnection();
-        return connection != null && connection.hasChannel(SharedAdminNetwork.CommandPayload.TYPE)
-                && connection.hasChannel(SharedAdminNetwork.CapabilityPayload.TYPE)
-                && connection.hasChannel(SharedAdminNetwork.SnapshotPayload.TYPE);
+        return connection != null && ForgeNetwork.available(connection.getConnection());
     }
     public static void tick() {
         boolean sourceChannel = available(), adminChannel = adminAvailable();
@@ -63,14 +59,14 @@ public final class SharedAccountClient {
     public static SharedPlaybackSource connect(MusicPlatform platform, MusicProvider personal, Runnable changed) {
         var admin = new SharedAdminController(request -> {
             if (!adminAvailable()) throw new IllegalStateException("Server does not support shared account administration");
-            PacketDistributor.sendToServer(new SharedAdminNetwork.CommandPayload(platform, request.view(), request.sequence(), request.action(), request.value()));
+            ForgeNetwork.sendToServer(new SharedAdminNetwork.CommandPayload(platform, request.view(), request.sequence(), request.action(), request.value()));
         }, Clock.systemUTC(), platform);
         admins.put(platform, admin);
         SharedAdminNetwork.clientCapability = value -> { if (adminAvailable()) admins.values().forEach(item -> item.capability(value)); };
         SharedAdminNetwork.clientSnapshot = value -> { if (adminAvailable()) admins.values().forEach(item -> item.receive(value)); };
         var source = new SharedPlaybackSource(personal, request -> {
             if (!available()) throw new IllegalStateException("Server does not support shared account playback");
-            PacketDistributor.sendToServer(new SharedAccountNetwork.RequestPayload(request.request(), request.generation(), request.song(), request.refresh()));
+            ForgeNetwork.sendToServer(new SharedAccountNetwork.RequestPayload(request.request(), request.generation(), request.song(), request.refresh()));
         }, changed, Clock.systemUTC(), platform, () -> keepLogin(platform));
         sources.put(platform, source);
         SharedAccountNetwork.clientState = state -> { var target = sources.get(state.platform()); if (available() && target != null) target.state(state.generation(), state.error()); };

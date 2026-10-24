@@ -56,10 +56,10 @@ public final class AudioLibrary {
         refresh();
         String query = name.strip();
         List<Entry> fileMatches = entries.values().stream().filter(entry -> entry.fileName.equalsIgnoreCase(query)).toList();
-        if (!fileMatches.isEmpty()) return fileMatches.size() == 1 ? Optional.of(fileMatches.getFirst().track) : Optional.empty();
+        if (!fileMatches.isEmpty()) return fileMatches.size() == 1 ? Optional.of(fileMatches.get(0).track) : Optional.empty();
         List<Entry> titleMatches = entries.values().stream().filter(entry ->
                 entry.fileName.substring(0, entry.fileName.lastIndexOf('.')).equalsIgnoreCase(query)).toList();
-        return titleMatches.size() == 1 ? Optional.of(titleMatches.getFirst().track) : Optional.empty();
+        return titleMatches.size() == 1 ? Optional.of(titleMatches.get(0).track) : Optional.empty();
     }
 
     public synchronized Optional<Track> getTrack(SongId id) {

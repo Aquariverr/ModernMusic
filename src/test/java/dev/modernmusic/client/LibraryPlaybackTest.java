@@ -62,7 +62,7 @@ class LibraryPlaybackTest {
             for (int i = 1; i < 400; i++) player.add(Integer.toString(i));
             player.importPlaylist("42");
             provider.list.complete(new Playlist("Fixture", List.of(new SongId(500), new SongId(501)), List.of(), 2));
-            assertEquals(400, player.queue().entries().size()); assertEquals(new SongId(500), player.queue().entries().getLast());
+            assertEquals(400, player.queue().entries().size()); assertEquals(new SongId(500), dev.modernmusic.compat.Java17.last(player.queue().entries()));
             assertEquals(0, player.queue().index()); assertEquals(1, player.importedCount());
             assertEquals("modernmusic.playlist.partial", player.importMessage());
         }
@@ -148,7 +148,7 @@ class LibraryPlaybackTest {
             assertEquals(PlaybackMode.REPEAT_ONE, second.queue().mode()); assertEquals(PlaybackController.State.STOPPED, second.state());
             second.clear();
         }
-        try (var store = new QueueStore(file)) { assertTrue(store.load().join().queues().getFirst().songs().isEmpty()); }
+        try (var store = new QueueStore(file)) { assertTrue(store.load().join().queues().get(0).songs().isEmpty()); }
     }
     private void awaitRestore(PlaybackController player, Queue<Runnable> callbacks) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);

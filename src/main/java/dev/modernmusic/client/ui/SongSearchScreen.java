@@ -53,14 +53,14 @@ public final class SongSearchScreen extends MusicScreen {
         left = (width - panelWidth) / 2; top = (height - panelHeight) / 2;
         boolean small = panelHeight < 270;
         resultsY = small ? 64 : 74; rowHeight = small ? 26 : 30; pagerOffset = small ? 98 : 100;
-        pageSize = Math.clamp((panelHeight - pagerOffset - 6 - resultsY) / rowHeight, 1, SongSearchResult.MAX_PAGE_SIZE);
+        pageSize = dev.modernmusic.compat.Java17.clamp((panelHeight - pagerOffset - 6 - resultsY) / rowHeight, 1, SongSearchResult.MAX_PAGE_SIZE);
         addRenderableWidget(new IconButton(left + panelWidth - 74, top + 6, 60, 20, Component.translatable("gui.back"), Icon.LEFT, false, true, this::onClose));
         if (picking) { initDestinations(); return; }
         input = addRenderableWidget(new ThemedEditBox(font, left + 14, top + (small ? 38 : 40), panelWidth - 98, small ? 24 : 26,
                 Component.translatable(player.platform().key("search.hint")), Icon.SEARCH));
         // Preserve imported text so an oversized query reports validation instead of silently searching a prefix.
         input.setMaxLength(Math.max(SongSearchResult.MAX_QUERY_LENGTH, draft.length())); input.setValue(draft);
-        input.setHint(Component.translatable(player.platform().key("search.hint")).withColor(FIELD_HINT));
+        input.setHint(Component.translatable(player.platform().key("search.hint")).withStyle(style -> style.withColor(FIELD_HINT)));
         input.setResponder(value -> draft = value);
         submit = addRenderableWidget(new IconButton(left + panelWidth - 78, top + (small ? 38 : 40), 64, small ? 24 : 26, Component.translatable("modernmusic.search.open"), Icon.SEARCH, true, true, this::newSearch));
         for (int i = 0; i < pageSize; i++) {
@@ -169,7 +169,7 @@ public final class SongSearchScreen extends MusicScreen {
     private void initDestinations() {
         var destinations = player.searchDestinations();
         int count = Math.max(1, (panelHeight - 100) / 28);
-        destinationPage = Math.clamp(destinationPage, 0, (destinations.size() - 1) / count);
+        destinationPage = dev.modernmusic.compat.Java17.clamp(destinationPage, 0, (destinations.size() - 1) / count);
         for (int i = 0; i < count && destinationPage * count + i < destinations.size(); i++) {
             var entry = destinations.get(destinationPage * count + i);
             var item = addRenderableWidget(new IconButton(left + 14, top + 60 + i * 28, panelWidth - 28, 24,
@@ -183,9 +183,8 @@ public final class SongSearchScreen extends MusicScreen {
                 () -> { destinationPage++; rebuildWidgets(); }));
         back.active = destinationPage > 0; forward.active = (destinationPage + 1) * count < destinations.size();
     }
-    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g, int x, int y, float delta) {
-        if (client().level == null) renderPanorama(g, delta);
-        renderBlurredBackground(delta);
+    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g) {
+        if (client().level == null) renderDirtBackground(g);
         scrim(g, width, height);
         panel(g, left, top, panelWidth, panelHeight, 12);
         header(g, left, top, panelWidth, 32);

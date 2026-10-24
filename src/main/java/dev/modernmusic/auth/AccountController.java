@@ -81,7 +81,7 @@ public final class AccountController implements AutoCloseable {
         } catch (AuthException error) { message = error.translationKey(); }
     }
     public void beginQr() {
-        beginQr(qrMethods().getFirst());
+        beginQr(qrMethods().get(0));
     }
     public void beginQr(AccountProvider.QrMethod method) {
         if (closed || busy() || qrAttempt || session != null) return;

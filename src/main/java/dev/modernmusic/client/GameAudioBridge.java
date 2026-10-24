@@ -2,8 +2,8 @@ package dev.modernmusic.client;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.sounds.SoundSource;
-import net.neoforged.neoforge.client.event.SelectMusicEvent;
-import net.neoforged.neoforge.client.event.sound.PlaySoundEvent;
+
+import net.minecraftforge.client.event.sound.PlaySoundEvent;
 import java.util.function.Supplier;
 
 /** Applies game volume and temporarily suppresses background music without changing saved options. */
@@ -27,7 +27,7 @@ public final class GameAudioBridge {
         suppressing = active;
     }
 
-    public void selectMusic(SelectMusicEvent event) { if (active()) event.setMusic(null); }
+
     public void playSound(PlaySoundEvent event) {
         if (active() && event.getSound() != null && event.getSound().getSource() == SoundSource.MUSIC)
             event.setSound(null);

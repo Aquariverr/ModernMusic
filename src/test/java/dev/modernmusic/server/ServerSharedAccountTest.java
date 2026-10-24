@@ -131,7 +131,7 @@ class ServerSharedAccountTest {
     @Test void expiredProviderRevokesSessionAndForgetDeletesSavedCopy() throws Exception {
         try (var server = create()) {
             bind(server); assertEquals(dev.modernmusic.shared.SharedAccountProfile.EMPTY, server.profile());
-            invalidators.getLast().accept(cookie);
+            dev.modernmusic.compat.Java17.last(invalidators).accept(cookie);
             pump(server, () -> !server.resolver().ready());
             pump(server, () -> !new RememberedSessionStore(directory).exists());
             assertEquals(MusicError.SHARED_EXPIRED, server.resolver().unavailable());
@@ -144,7 +144,7 @@ class ServerSharedAccountTest {
     }
     @Test void retiredProviderCannotExpireReenabledSession() throws Exception {
         try (var server = create()) {
-            bind(server); var old = invalidators.getLast(); server.enabled(false); server.enabled(true);
+            bind(server); var old = dev.modernmusic.compat.Java17.last(invalidators); server.enabled(false); server.enabled(true);
             old.accept(cookie);
             Runnable task; while ((task = main.poll()) != null) task.run();
             assertTrue(server.resolver().ready()); assertTrue(new RememberedSessionStore(directory).exists());

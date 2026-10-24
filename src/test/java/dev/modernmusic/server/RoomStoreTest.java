@@ -30,7 +30,7 @@ class RoomStoreTest {
         try (var store = new RoomStore(file)) {
             assertEquals(List.of(expected), store.load()); assertFalse(store.failed());
             var service = new RoomService(); service.restoreRooms(store.load());
-            var entry = service.updatesFor(List.of(dj), 0).get(dj).savedRooms().getFirst();
+            var entry = service.updatesFor(List.of(dj), 0).get(dj).savedRooms().get(0);
             service.execute(dj, "Guest", new RoomCommand(RoomCommand.Action.JOIN, entry.room(), entry.epoch(), -1, "", 0), null, 0);
             var restored = service.current(dj);
             assertEquals(id, restored.id()); assertEquals(owner, restored.owner());
@@ -62,7 +62,7 @@ class RoomStoreTest {
         try (var store = new RoomStore(file)) {
             assertEquals(saved, store.load()); assertFalse(store.failed());
             var service = new RoomService(); service.restoreRooms(store.load()); service.openPublicRoom();
-            var entry = service.updatesFor(List.of(dj), 0).get(dj).savedRooms().getFirst();
+            var entry = service.updatesFor(List.of(dj), 0).get(dj).savedRooms().get(0);
             assertTrue(entry.isPublicRoom());
             service.execute(dj, "DJ", new RoomCommand(RoomCommand.Action.JOIN, entry.room(), entry.epoch(), -1, "", 0), null, 0);
             assertTrue(service.current(dj).canControl(dj)); assertFalse(service.current(dj).canManage(dj));

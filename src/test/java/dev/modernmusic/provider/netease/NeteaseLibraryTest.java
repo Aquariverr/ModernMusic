@@ -21,7 +21,7 @@ class NeteaseLibraryTest {
                 """)) {
             var list = provider.getPlaylist(new SongId(42)).join();
             assertEquals(List.of(new SongId(3), new SongId(1), new SongId(2)), list.ids());
-            assertEquals(1, list.tracks().size()); assertEquals("https", list.tracks().getFirst().artwork().getScheme());
+            assertEquals(1, list.tracks().size()); assertEquals("https", list.tracks().get(0).artwork().getScheme());
         }
     }
     @Test void parsesLyricsAndAbsentLyrics() {

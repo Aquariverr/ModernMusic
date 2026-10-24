@@ -40,8 +40,8 @@ class NeteaseSearchTest {
             }, ignored -> fail())) {
                 var result = provider.searchSongs("  晴天 & artist  ", 4, 2).join();
                 assertEquals(12, result.total()); assertTrue(result.hasMore()); assertEquals(2, result.tracks().size());
-                assertEquals("https", result.tracks().getFirst().artwork().getScheme());
-                assertEquals("歌手", result.tracks().getLast().artistText()); assertNull(result.tracks().getLast().artwork());
+                assertEquals("https", result.tracks().get(0).artwork().getScheme());
+                assertEquals("歌手", dev.modernmusic.compat.Java17.last(result.tracks()).artistText()); assertNull(dev.modernmusic.compat.Java17.last(result.tracks()).artwork());
             }
         }
     }

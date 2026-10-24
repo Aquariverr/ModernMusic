@@ -8,7 +8,7 @@ import net.minecraft.util.FormattedCharSequence;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
-import net.neoforged.neoforge.client.event.RenderTooltipEvent;
+import net.minecraftforge.client.event.RenderTooltipEvent;
 import static dev.modernmusic.client.ui.PlayerTheme.*;
 
 /** Tooltips matching the music screens' theme; every other screen keeps the vanilla style. */

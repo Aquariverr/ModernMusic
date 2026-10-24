@@ -21,10 +21,10 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.gui.screens.AccessibilityOnboardingScreen;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.fml.common.Mod;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.common.NeoForge;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.common.MinecraftForge;
 import net.minecraft.network.chat.contents.TranslatableContents;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,7 +32,6 @@ import java.time.Clock;
 import java.util.function.BooleanSupplier;
 
 /** Explicit runClientSmoke only: real client classloading, screen and silent playback regression. */
-@Mod(value = "modernmusic_smoke", dist = Dist.CLIENT)
 public final class ClientPlaybackSmoke {
     private PlaybackController player;
     private final GameAudioBridge audio = new GameAudioBridge(() -> player);
@@ -50,21 +49,21 @@ public final class ClientPlaybackSmoke {
     public ClientPlaybackSmoke() {
         if (System.getProperty("modernmusic.roomSmoke") != null || Boolean.getBoolean("modernmusic.lifecycleSmoke") || Boolean.getBoolean("modernmusic.searchSmoke")
                 || Boolean.getBoolean("modernmusic.uiGallery") || Boolean.getBoolean("modernmusic.optionalClientSmoke") || Boolean.getBoolean("modernmusic.fontSmoke")) return;
-        NeoForge.EVENT_BUS.addListener(this::tick);
-        NeoForge.EVENT_BUS.addListener(audio::selectMusic);
-        NeoForge.EVENT_BUS.addListener(audio::playSound);
+        MinecraftForge.EVENT_BUS.addListener(this::tick);
+        MinecraftForge.EVENT_BUS.addListener(audio::playSound);
     }
 
-    private void tick(ClientTickEvent.Post event) {
+    private void tick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
         Minecraft game = Minecraft.getInstance();
         if (step == -1) return;
         try {
             if (player == null) {
                 if (System.nanoTime() > deadline) throw new IllegalStateException("Client startup timed out");
                 if (game.getOverlay() != null) return;
-                // This test owns a fresh, separate game directory and does not open a world.
+                // This test owns a separate game directory and later opens a world for HUD checks.
                 if (game.screen instanceof AccessibilityOnboardingScreen) {
-                    game.options.onboardingAccessibilityFinished();
+
                     game.setScreen(new TitleScreen());
                 }
                 if (!(game.screen instanceof TitleScreen)) {
@@ -73,6 +72,8 @@ public final class ClientPlaybackSmoke {
                     waitingScreen = type;
                     return;
                 }
+                // Hidden/unfocused smoke windows must not open PauseScreen when the HUD is shown.
+                game.options.pauseOnLostFocus = false;
                 var http = new BoundedHttpTransport();
                 player = new PlaybackController(new NeteaseMusicProvider(http, Clock.systemUTC()), http,
                         output, game::execute);
@@ -362,8 +363,7 @@ public final class ClientPlaybackSmoke {
                                     net.minecraft.world.level.WorldDataConfiguration.DEFAULT),
                             new net.minecraft.world.level.levelgen.WorldOptions(0L, false, false),
                             registry -> registry.registryOrThrow(net.minecraft.core.registries.Registries.WORLD_PRESET)
-                                    .getHolderOrThrow(net.minecraft.world.level.levelgen.presets.WorldPresets.FLAT).value().createWorldDimensions(),
-                            new TitleScreen());
+                                    .getHolderOrThrow(net.minecraft.world.level.levelgen.presets.WorldPresets.FLAT).value().createWorldDimensions());
                 }
                 case 34 -> {
                     if (game.level == null || game.player == null || game.getOverlay() != null) return;
@@ -391,7 +391,12 @@ public final class ClientPlaybackSmoke {
                 }
                 case 37 -> {
                     if (settleTicks-- > 0) return;
-                    if (game.screen != null || game.level == null) throw new IllegalStateException("In-game HUD not reached");
+                    if (game.screen != null || game.level == null) {
+                        String actualScreen = game.screen == null ? "none" : game.screen.getClass().getName();
+                        ModernMusic.LOGGER.error("Client smoke HUD not reached: screen={}, level={}, windowActive={}, pauseOnLostFocus={}",
+                                actualScreen, game.level != null, game.isWindowActive(), game.options.pauseOnLostFocus);
+                        throw new IllegalStateException("In-game HUD not reached: screen=" + actualScreen);
+                    }
                     capture(game, "smoke-hud-in-world.png");
                     queueOpenPlayer(game); step++;
                 }
@@ -532,16 +537,13 @@ public final class ClientPlaybackSmoke {
     private void verifyGameMusic(boolean suppressed) {
         if (GameAudioBridge.SOURCE != net.minecraft.sounds.SoundSource.RECORDS) throw new IllegalStateException("Wrong sound category");
         var music = net.minecraft.sounds.Musics.MENU;
-        var selected = new net.neoforged.neoforge.client.event.SelectMusicEvent(music, null);
-        NeoForge.EVENT_BUS.post(selected);
-        if ((selected.getMusic() == null) != suppressed) throw new IllegalStateException("Music selection suppression failed");
         var sound = net.minecraft.client.resources.sounds.SimpleSoundInstance.forMusic(music.getEvent().value());
-        var playing = new net.neoforged.neoforge.client.event.sound.PlaySoundEvent(null, sound);
-        NeoForge.EVENT_BUS.post(playing);
+        var playing = new net.minecraftforge.client.event.sound.PlaySoundEvent(null, sound);
+        MinecraftForge.EVENT_BUS.post(playing);
         if ((playing.getSound() == null) != suppressed) throw new IllegalStateException("Music sound suppression failed");
         var click = net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK, 1);
-        var effect = new net.neoforged.neoforge.client.event.sound.PlaySoundEvent(null, click);
-        NeoForge.EVENT_BUS.post(effect);
+        var effect = new net.minecraftforge.client.event.sound.PlaySoundEvent(null, click);
+        MinecraftForge.EVENT_BUS.post(effect);
         if (effect.getSound() == null) throw new IllegalStateException("Non-music sound was suppressed");
     }
     private void verifyGameVolume(Minecraft game) {
@@ -649,7 +651,7 @@ public final class ClientPlaybackSmoke {
     private void capture(Minecraft game, String name) throws java.io.IOException {
         for (var child : screen.children()) {
             if (child instanceof AbstractWidget widget && widget.visible && (widget.getX() < 0 || widget.getY() < 0
-                    || widget.getRight() > screen.width || widget.getBottom() > screen.height)) {
+                    || SmokeCompat.right(widget) > screen.width || SmokeCompat.bottom(widget) > screen.height)) {
                 throw new IllegalStateException("Widget outside viewport");
             }
         }

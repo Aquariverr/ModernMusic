@@ -139,8 +139,8 @@ public final class HudSettings {
             double dx = shift(left, right, endX, frameWidth, width), dy = shift(top, bottom, endY, frameHeight, height);
             for (int i = 0; i < all.length; i++) if (group[i] == g) {
                 double s = component(all[i]).fitScale(width, height);
-                corners[i] = new double[]{Math.clamp(boxes[i].left() + dx, 4, 4 + Math.max(0, width - 8 - all[i].width * s)),
-                        Math.clamp(boxes[i].top() + dy, 4, 4 + Math.max(0, height - 8 - all[i].height * s))};
+                corners[i] = new double[]{dev.modernmusic.compat.Java17.clamp(boxes[i].left() + dx, 4, 4 + Math.max(0, width - 8 - all[i].width * s)),
+                        dev.modernmusic.compat.Java17.clamp(boxes[i].top() + dy, 4, 4 + Math.max(0, height - 8 - all[i].height * s))};
             }
         }
         return corners;
@@ -185,7 +185,7 @@ public final class HudSettings {
             t.scale(state.scale); t.opacity(state.opacity); t.enabled(state.enabled); parts.put(part, t);
         });
     }
-    private static double finite(double value, double fallback, double low, double high) { return Double.isFinite(value) ? Math.clamp(value, low, high) : fallback; }
+    private static double finite(double value, double fallback, double low, double high) { return Double.isFinite(value) ? dev.modernmusic.compat.Java17.clamp(value, low, high) : fallback; }
     private void load() {
         try {
             if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || Files.size(file) > 8192) return;

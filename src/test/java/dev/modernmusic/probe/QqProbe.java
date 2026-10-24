@@ -12,7 +12,7 @@ public final class QqProbe {
             probe("detail", () -> { var song = qq.getReference("0039MnYb0qxYhV").join(); System.out.println("QQ song=" + song.id() + " title=" + song.title()); });
             probe("search", () -> {
                 var page = qq.searchSongs("晴天", 0, 10).join(); var next = qq.searchSongs("晴天", 10, 10).join();
-                if (page.tracks().isEmpty() || next.tracks().isEmpty() || page.tracks().getFirst().id().equals(next.tracks().getFirst().id())) throw new IllegalStateException("Search pagination failed");
+                if (page.tracks().isEmpty() || next.tracks().isEmpty() || page.tracks().get(0).id().equals(next.tracks().get(0).id())) throw new IllegalStateException("Search pagination failed");
                 System.out.println("QQ search tracks=" + page.tracks().size() + " total=" + page.total() + " page2=" + next.tracks().size());
             });
             probe("lyrics", () -> { var song = qq.getReference("0039MnYb0qxYhV").join(); System.out.println("QQ lyric lines=" + qq.getLyrics(song.id()).join().lines().size()); });

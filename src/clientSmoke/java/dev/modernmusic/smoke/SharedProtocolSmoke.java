@@ -3,15 +3,14 @@ package dev.modernmusic.smoke;
 import dev.modernmusic.network.SharedAccountNetwork.*;
 import dev.modernmusic.provider.MusicError;
 import java.util.UUID;
-import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.core.RegistryAccess;
 import io.netty.buffer.Unpooled;
 
 /** Actual payload codecs under the game runtime; never bundled in the release JAR. */
 public final class SharedProtocolSmoke {
     public static void verify() {
-        var buffer = new RegistryFriendlyByteBuf(Unpooled.buffer(), RegistryAccess.EMPTY,
-                net.neoforged.neoforge.network.connection.ConnectionType.OTHER);
+        var buffer = new FriendlyByteBuf(Unpooled.buffer());
         try {
             var request = new RequestPayload(UUID.randomUUID(), 9, "42", true);
             RequestPayload.CODEC.encode(buffer, request);
@@ -58,6 +57,12 @@ public final class SharedProtocolSmoke {
             if (!dissolve.equals(dev.modernmusic.room.RoomJson.decode(decodedDissolve.json(), dev.modernmusic.room.RoomCommand.class)))
                 throw new AssertionError("Saved-room dissolve payload codec");
             buffer.clear();
+            var duration = new dev.modernmusic.network.RoomNetwork.DurationPayload(new dev.modernmusic.room.RoomDurationReport(
+                    roomId, roomEpoch, 42, "qq:42", dev.modernmusic.room.RoomDurationReport.MAX_DURATION_MS));
+            dev.modernmusic.network.RoomNetwork.DurationPayload.CODEC.encode(buffer, duration);
+            if (!duration.equals(dev.modernmusic.network.RoomNetwork.DurationPayload.CODEC.decode(buffer)))
+                throw new AssertionError("Playback-bound duration report codec");
+            buffer.clear();
             // Valid maximum directories plus a full mixed-provider room exceeded the former 64 KiB character limit.
             var maximumSaved = new java.util.ArrayList<dev.modernmusic.room.RoomUpdate.SavedRoom>();
             var maximumInvites = new java.util.ArrayList<dev.modernmusic.room.RoomUpdate.Invitation>();
@@ -80,15 +85,19 @@ public final class SharedProtocolSmoke {
             buffer.clear();
             var publicId = dev.modernmusic.room.RoomService.PUBLIC_ROOM_ID;
             var serverOwner = dev.modernmusic.room.RoomService.SERVER_OWNER;
-            maximumSaved.add(new dev.modernmusic.room.RoomUpdate.SavedRoom(publicId, roomEpoch, "Server Public Room", serverOwner, 1000, 400));
-            var publicRoom = new dev.modernmusic.room.RoomSnapshot(publicId, roomEpoch, "Server Public Room", 1, 1, 1, serverOwner,
-                    java.util.stream.IntStream.range(0, 1000).mapToObj(i -> new dev.modernmusic.room.RoomSnapshot.Member(
-                            i == 0 ? owner : new UUID(104, i), "Player" + i, false, false, i == 0)).toList(),
-                    fullRoom.songs(), 0, fullRoom.mode(), fullRoom.state(), 0, 0, 0);
-            var publicUpdate = new dev.modernmusic.room.RoomUpdate(21, publicRoom, maximumInvites, "",
-                    dev.modernmusic.room.TeamStatus.ABSENT, maximumSaved, 2);
+            int publicLimit = dev.modernmusic.room.RoomService.MAX_PUBLIC_MEMBERS;
+            maximumSaved.add(new dev.modernmusic.room.RoomUpdate.SavedRoom(publicId, roomEpoch, "<".repeat(40), serverOwner, publicLimit, 400));
+            String longestSong = "kugou:collection_99_" + "9".repeat(19) + "_" + "9".repeat(19) + "_9";
+            var publicRoom = new dev.modernmusic.room.RoomSnapshot(publicId, roomEpoch, "<".repeat(40),
+                    Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, serverOwner,
+                    java.util.stream.IntStream.range(0, publicLimit).mapToObj(i -> new dev.modernmusic.room.RoomSnapshot.Member(
+                            i == 0 ? owner : new UUID(104, i), "<".repeat(16), false, false, i == 0)).toList(),
+                    java.util.Collections.nCopies(400, longestSong), 399, fullRoom.mode(), fullRoom.state(),
+                    Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
+            var publicUpdate = new dev.modernmusic.room.RoomUpdate(Long.MAX_VALUE, publicRoom, maximumInvites, "<".repeat(80),
+                    new dev.modernmusic.room.TeamStatus(dev.modernmusic.room.TeamStatus.State.READY, "<".repeat(40)), maximumSaved, 64);
             var publicPayload = new dev.modernmusic.network.RoomNetwork.UpdatePayload(dev.modernmusic.room.RoomJson.encode(publicUpdate));
-            if (publicPayload.json().length() <= 131072) throw new AssertionError("Public room did not exercise the extended payload bound");
+            if (publicPayload.json().length() <= 262144) throw new AssertionError("Public room did not exercise the corrected payload bound");
             dev.modernmusic.network.RoomNetwork.UpdatePayload.CODEC.encode(buffer, publicPayload);
             var decodedPublic = dev.modernmusic.network.RoomNetwork.UpdatePayload.CODEC.decode(buffer);
             var publicState = dev.modernmusic.room.RoomJson.decode(decodedPublic.json(), dev.modernmusic.room.RoomUpdate.class);

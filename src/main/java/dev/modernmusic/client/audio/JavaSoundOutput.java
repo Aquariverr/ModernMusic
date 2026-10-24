@@ -29,9 +29,9 @@ public final class JavaSoundOutput implements AudioOutput {
     @Override public void load(PcmAudio audio, long positionMs, boolean initiallyPaused) {
         synchronized (lock) {
             if (closed) return;
-            requestedAudio = audio; requestedPosition = Math.clamp(positionMs, 0, audio.durationMs()); paused = initiallyPaused; revision++;
+            requestedAudio = audio; requestedPosition = dev.modernmusic.compat.Java17.clamp(positionMs, 0, audio.durationMs()); paused = initiallyPaused; revision++;
             snapshot = new Snapshot(State.STARTING, requestedPosition, audio.durationMs()); lock.notifyAll();
-            if (worker == null) worker = Thread.ofPlatform().daemon().name("modernmusic-audio").start(this::run);
+            if (worker == null) worker = dev.modernmusic.compat.Java17.startDaemon("modernmusic-audio", this::run);
         }
     }
     @Override public void pause(boolean value) {
@@ -47,7 +47,7 @@ public final class JavaSoundOutput implements AudioOutput {
             revision++; lock.notifyAll();
         }
     }
-    @Override public void volume(float value) { gain = Float.isFinite(value) ? Math.clamp(value, 0, 1) : 0; }
+    @Override public void volume(float value) { gain = Float.isFinite(value) ? dev.modernmusic.compat.Java17.clamp(value, 0, 1) : 0; }
     @Override public void stop() {
         synchronized (lock) {
             requestedAudio = null; revision++;

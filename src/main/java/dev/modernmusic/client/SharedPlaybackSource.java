@@ -11,7 +11,18 @@ import java.util.function.BooleanSupplier;
 /** Client-thread provider decorator. A remembered opt-in restores once the connection's shared account is ready. */
 public final class SharedPlaybackSource implements MusicProvider {
     public record Request(UUID request, long generation, String song, boolean refresh) {}
-    private record Pending(SongId song, long generation, long deadline, CompletableFuture<PlaybackResource> future) {}
+    private static final int MAX_RATE_RETRIES = 4;
+    private static final class Pending {
+        final SongId song;
+        final long generation, deadline;
+        final boolean refresh;
+        final CompletableFuture<PlaybackResource> future = new CompletableFuture<>();
+        int retries;
+        long retryAt = -1;
+        Pending(SongId song, long generation, long deadline, boolean refresh) {
+            this.song = song; this.generation = generation; this.deadline = deadline; this.refresh = refresh;
+        }
+    }
     private final MusicProvider personal;
     private final Consumer<Request> send;
     private final Runnable changed;
@@ -64,7 +75,17 @@ public final class SharedPlaybackSource implements MusicProvider {
         Pending wait = pending.get(request);
         if (wait == null || wait.generation != revision || revision != generation || !wait.song.toString().equals(song)) return;
         pending.remove(request);
+        if (wait.future.isDone()) return;
+        if (clock.millis() >= wait.deadline) { wait.future.completeExceptionally(new MusicException(MusicError.NETWORK_ERROR)); return; }
         if (!selected || !available()) { wait.future.completeExceptionally(new MusicException(error == null ? MusicError.SHARED_DISABLED : error)); return; }
+        if (failure == MusicError.RATE_LIMITED && wait.retries < MAX_RATE_RETRIES) {
+            // Preserve the logical request and deadline while the server's bounded fan-out drains.
+            // New wire ids prevent late/duplicate replies from completing a later attempt.
+            UUID next = UUID.randomUUID();
+            long delay = Math.min(8_000L, 2_000L << wait.retries++) + Math.floorMod(next.hashCode(), 501);
+            wait.retryAt = clock.millis() + delay;
+            if (wait.retryAt < wait.deadline) { pending.put(next, wait); return; }
+        }
         if (failure != null) { wait.future.completeExceptionally(new MusicException(failure)); return; }
         try {
             Instant expires = Instant.ofEpochMilli(expiresAt);
@@ -78,10 +99,14 @@ public final class SharedPlaybackSource implements MusicProvider {
             profile = dev.modernmusic.shared.SharedAccountProfile.EMPTY;
             connected = false; error = MusicError.NETWORK_ERROR; cancel(error); if (selected) changed.run();
         }
-        var expired = pending.entrySet().stream().filter(entry -> entry.getValue().future.isDone() || clock.millis() >= entry.getValue().deadline)
-                .map(Map.Entry::getKey).toList();
-        for (UUID id : expired) {
-            Pending wait = pending.remove(id); if (wait != null) wait.future.completeExceptionally(new MusicException(MusicError.NETWORK_ERROR));
+        for (var entry : List.copyOf(pending.entrySet())) {
+            UUID id = entry.getKey(); Pending wait = entry.getValue();
+            if (pending.get(id) != wait) continue;
+            if (wait.future.isDone() || clock.millis() >= wait.deadline) {
+                pending.remove(id); wait.future.completeExceptionally(new MusicException(MusicError.NETWORK_ERROR));
+            } else if (wait.retryAt >= 0 && clock.millis() >= wait.retryAt) {
+                send(id, wait);
+            }
         }
     }
     public void disconnect() {
@@ -98,13 +123,18 @@ public final class SharedPlaybackSource implements MusicProvider {
     private CompletableFuture<PlaybackResource> resolve(SongId song, boolean refresh) {
         if (!selected) return refresh ? personal.refreshPlayback(song) : personal.resolvePlayback(song);
         if (!available()) return CompletableFuture.failedFuture(new MusicException(error));
+        pending.values().removeIf(wait -> wait.future.isDone());
         if (pending.size() >= 2) return CompletableFuture.failedFuture(new MusicException(MusicError.RATE_LIMITED));
         UUID request = UUID.randomUUID();
-        var future = new CompletableFuture<PlaybackResource>();
-        pending.put(request, new Pending(song, generation, clock.millis() + 25_000, future));
-        try { send.accept(new Request(request, generation, song.toString(), refresh)); }
-        catch (RuntimeException failure) { pending.remove(request); future.completeExceptionally(new MusicException(MusicError.NETWORK_ERROR)); }
-        return future;
+        var wait = new Pending(song, generation, clock.millis() + 25_000, refresh);
+        pending.put(request, wait);
+        send(request, wait);
+        return wait.future;
+    }
+    private void send(UUID request, Pending wait) {
+        wait.retryAt = -1;
+        try { send.accept(new Request(request, wait.generation, wait.song.toString(), wait.refresh)); }
+        catch (RuntimeException failure) { pending.remove(request); wait.future.completeExceptionally(new MusicException(MusicError.NETWORK_ERROR)); }
     }
     @Override public CompletableFuture<PlaybackResource> resolvePlayback(SongId song) { return resolve(song, false); }
     @Override public CompletableFuture<PlaybackResource> refreshPlayback(SongId song) { return resolve(song, true); }

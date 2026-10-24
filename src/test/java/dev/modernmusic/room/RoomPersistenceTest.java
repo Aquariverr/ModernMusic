@@ -46,13 +46,13 @@ class RoomPersistenceTest {
         assertFalse(remaining.canControl(member)); assertEquals(RoomSnapshot.State.PLAYING, remaining.state());
         denied("owner_permission", () -> dissolve(service, member, remaining));
         service.disconnect(member);
-        var empty = service.snapshots().getFirst();
+        var empty = service.snapshots().get(0);
         assertTrue(empty.members().isEmpty()); assertEquals(before.id(), empty.id()); assertEquals(owner, empty.owner());
         assertEquals(before.songs(), empty.songs()); assertEquals(before.index(), empty.index()); assertEquals(before.mode(), empty.mode());
         assertEquals(RoomSnapshot.State.STOPPED, empty.state()); assertEquals(0, empty.positionMs()); assertEquals(0, empty.durationMs());
         assertEquals(1, update(service, owner).savedRooms().size());
         assertEquals(1, update(service, member).savedRooms().size());
-        join(service, owner, update(service, owner).savedRooms().getFirst());
+        join(service, owner, update(service, owner).savedRooms().get(0));
         assertTrue(service.current(owner).canManage(owner)); assertEquals(empty.id(), service.current(owner).id());
     }
 
@@ -92,7 +92,7 @@ class RoomPersistenceTest {
         var playing = service.current(member); var persisted = service.persistentRooms();
         var restarted = new RoomService(); restarted.restoreRooms(persisted);
         assertNull(restarted.current(owner)); assertNull(restarted.current(member));
-        var saved = update(restarted, member).savedRooms().getFirst();
+        var saved = update(restarted, member).savedRooms().get(0);
         assertEquals(playing.id(), saved.room()); assertNotEquals(playing.epoch(), saved.epoch()); assertEquals(0, saved.members());
         denied("stale", () -> join(restarted, member, playing));
         join(restarted, member, saved); var restored = restarted.current(member);
@@ -106,16 +106,16 @@ class RoomPersistenceTest {
         var service = new RoomService(); create(service, owner, "Roles");
         command(service, owner, INVITE, 0, member); join(service, member, service.current(owner));
         command(service, owner, REQUESTER, 1, member); service.disconnect(member);
-        join(service, member, update(service, member).savedRooms().getFirst());
+        join(service, member, update(service, member).savedRooms().get(0));
         assertTrue(service.current(member).canRequest(member)); assertFalse(service.current(member).canControl(member));
         command(service, owner, DJ, 0, member); service.leave(member);
-        join(service, member, update(service, member).savedRooms().getFirst()); assertFalse(service.current(member).canRequest(member));
+        join(service, member, update(service, member).savedRooms().get(0)); assertFalse(service.current(member).canRequest(member));
         var old = service.current(member); command(service, owner, KICK, 0, member);
         assertTrue(update(service, member).savedRooms().isEmpty());
         denied("invite", () -> join(service, member, old));
         var restarted = new RoomService(); restarted.restoreRooms(service.persistentRooms());
         assertTrue(update(restarted, member).savedRooms().isEmpty());
-        var ownerRoom = update(restarted, owner).savedRooms().getFirst();
+        var ownerRoom = update(restarted, owner).savedRooms().get(0);
         denied("invite", () -> join(restarted, member, ownerRoom));
     }
 
@@ -126,7 +126,7 @@ class RoomPersistenceTest {
         join(service, owner, service.current(other)); service.leave(owner);
         var owned = create(service, owner, "Created later"); service.leave(owner);
         var listed = update(service, owner).savedRooms();
-        assertEquals(owned.id(), listed.getFirst().room()); assertEquals(other, listed.getLast().owner());
+        assertEquals(owned.id(), listed.get(0).room()); assertEquals(other, dev.modernmusic.compat.Java17.last(listed).owner());
         assertTrue(update(service, member).savedRooms().isEmpty());
         var restarted = new RoomService(); restarted.restoreRooms(service.persistentRooms());
         assertTrue(update(restarted, member).invitations().isEmpty()); assertTrue(update(restarted, member).savedRooms().isEmpty());
@@ -178,14 +178,14 @@ class RoomPersistenceTest {
             command(service, owner, INVITE, 0, guest); join(service, guest, service.current(owner)); service.leave(guest);
         }
         assertEquals(1, service.current(owner).members().size());
-        assertEquals(history.size() + 1, service.persistentRooms().getFirst().members().size());
+        assertEquals(history.size() + 1, service.persistentRooms().get(0).members().size());
         for (var guest : history) assertEquals(1, update(service, guest).savedRooms().size());
-        join(service, history.getFirst(), update(service, history.getFirst()).savedRooms().getFirst());
-        assertNotNull(service.current(history.getFirst()));
+        join(service, history.get(0), update(service, history.get(0)).savedRooms().get(0));
+        assertNotNull(service.current(history.get(0)));
     }
 
     @Test void restoreValidatesAtomicallyAndMayBeCombinedWithIndependentTeamPlaylistRestore() {
-        var service = new RoomService(); create(service, owner, "Saved"); var saved = service.persistentRooms().getFirst();
+        var service = new RoomService(); create(service, owner, "Saved"); var saved = service.persistentRooms().get(0);
         var restarted = new RoomService();
         assertThrows(IllegalArgumentException.class, () -> restarted.restoreRooms(List.of(saved, saved)));
         assertTrue(restarted.snapshots().isEmpty()); assertTrue(restarted.persistentRooms().isEmpty());

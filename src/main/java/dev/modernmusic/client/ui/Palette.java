@@ -55,7 +55,7 @@ record Palette(boolean light, boolean blocky, int shell, int card, int field, in
         else if (hp < 4) { r = 0; g = x; b = c; } else if (hp < 5) { r = x; g = 0; b = c; } else { r = c; g = 0; b = x; }
         return 0xFF000000 | channel(r + m) << 16 | channel(g + m) << 8 | channel(b + m);
     }
-    private static int channel(float value) { return Math.clamp(Math.round(value * 255), 0, 255); }
+    private static int channel(float value) { return dev.modernmusic.compat.Java17.clamp(Math.round(value * 255), 0, 255); }
 
     /**
      * An accent that reads on dark surfaces, keeping the cover's hue; 0 when the cover is too gray to carry one. Dark
@@ -65,7 +65,7 @@ record Palette(boolean light, boolean blocky, int shell, int card, int field, in
         if (cover == 0) return 0;
         float[] c = hsl(cover);
         if (c[1] < .16f) return 0;
-        float s = Math.clamp(c[1], .5f, .85f), l = Math.clamp(c[2], .64f, .74f);
+        float s = dev.modernmusic.compat.Java17.clamp(c[1], .5f, .85f), l = dev.modernmusic.compat.Java17.clamp(c[2], .64f, .74f);
         int accent = rgb(c[0], s, l);
         while (luminance(accent) < .25 && l < .9f) accent = rgb(c[0], s, l += .02f);
         return accent;

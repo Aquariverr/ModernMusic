@@ -31,9 +31,8 @@ public final class CacheScreen extends MusicScreen {
         addRenderableWidget(new IconButton(left + 16, top + panelHeight - 34, panelWidth - 32, 22,
                 Component.translatable("gui.back"), Icon.LEFT, false, true, this::onClose));
     }
-    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g, int x, int y, float partial) {
-        if (client().level == null) renderPanorama(g, partial);
-        renderBlurredBackground(partial);
+    @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g) {
+        if (client().level == null) renderDirtBackground(g);
         scrim(g, width, height);
         panel(g, left, top, panelWidth, panelHeight, 12);
         header(g, left, top, panelWidth, 32);

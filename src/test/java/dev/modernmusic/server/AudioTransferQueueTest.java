@@ -24,7 +24,7 @@ class AudioTransferQueueTest {
         UUID first = UUID.randomUUID(), second = UUID.randomUUID(), newcomer = UUID.randomUUID();
         assertFalse(queue.download(UUID.randomUUID(), first));
         assertFalse(queue.download(UUID.randomUUID(), second));
-        queue.remove(active.getFirst());
+        queue.remove(active.get(0));
         assertFalse(queue.download(UUID.randomUUID(), newcomer));
         limited(() -> queue.upload(UUID.randomUUID(), UUID.randomUUID()));
         assertEquals(List.of(first), queue.startWaiting());
@@ -39,7 +39,7 @@ class AudioTransferQueueTest {
         assertFalse(queue.download(owner, first)); assertFalse(queue.download(owner, second));
         for (int i = 0; i < 20; i++) assertFalse(queue.download(owner, first));
         limited(() -> queue.download(owner, UUID.randomUUID()));
-        queue.remove(active.getFirst()); assertEquals(List.of(first), queue.startWaiting());
+        queue.remove(active.get(0)); assertEquals(List.of(first), queue.startWaiting());
         assertTrue(queue.download(owner, first));
         assertEquals(MusicError.INVALID_RESPONSE,
                 assertThrows(MusicException.class, () -> queue.download(UUID.randomUUID(), first)).error());
@@ -53,7 +53,7 @@ class AudioTransferQueueTest {
             assertFalse(queue.download(UUID.randomUUID(), request));
         }
         limited(() -> queue.download(UUID.randomUUID(), UUID.randomUUID()));
-        queue.remove(waiting.getFirst());
+        queue.remove(waiting.get(0));
         assertFalse(queue.download(UUID.randomUUID(), UUID.randomUUID()));
         queue.clear();
         UUID owner = UUID.randomUUID();
@@ -67,7 +67,7 @@ class AudioTransferQueueTest {
         assertFalse(queue.download(UUID.randomUUID(), cancelled));
         assertFalse(queue.download(UUID.randomUUID(), survivor));
         queue.remove(cancelled); queue.remove(cancelled); assertFalse(queue.waiting(cancelled));
-        queue.remove(active.getFirst()); queue.remove(active.getFirst());
+        queue.remove(active.get(0)); queue.remove(active.get(0));
         assertEquals(List.of(survivor), queue.startWaiting());
         queue.clear(); assertEquals(List.of(), queue.startWaiting());
         assertTrue(queue.download(UUID.randomUUID(), UUID.randomUUID()));

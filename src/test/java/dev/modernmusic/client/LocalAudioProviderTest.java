@@ -82,7 +82,7 @@ class LocalAudioProviderTest {
         try (var local = new LocalAudioProvider(folder, main::add, remote);
              var player = new PlaybackController(new MultiPlatformProvider(local, local, local, local),
                      (uri, max) -> { throw new AssertionError(); }, output, main::add)) {
-            player.addSearchTracks(player.searchDestinations().getFirst(), remote.catalog).join();
+            player.addSearchTracks(player.searchDestinations().get(0), remote.catalog).join();
             player.playPersonal(0);
             while (!main.isEmpty()) main.remove().run();
             player.stop();

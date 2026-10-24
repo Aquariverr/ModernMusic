@@ -328,6 +328,7 @@
   "modernmusic.room.error.rate": "操作太频繁，请稍后重试。",
   "modernmusic.room.error.already_joined": "请先退出当前房间。",
   "modernmusic.room.error.full": "房间、邀请或队列已达上限。",
+  "modernmusic.room.error.public_full": "服务器公共群组已满（最多 1000 人），请等待有人退出后重试。",
   "modernmusic.room.error.duplicate": "歌曲已在群组队列中，请勿重复添加。",
   "modernmusic.room.error.input": "输入或操作无效，请检查后重试。",
   "modernmusic.room.error.missing": "房间已关闭。",

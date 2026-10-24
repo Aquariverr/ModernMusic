@@ -43,10 +43,20 @@ public final class NeteaseMusicProvider implements MusicProvider {
         this.encoder = encoder;
     }
 
+    private record RequestSession(SessionCookie cookie, LoginCookies cookies) {}
+
+    /** Capture the account and its cookie jar before queueing; late work cannot replace a new jar. */
+    private synchronized <T> CompletableFuture<T> submit(java.util.function.Function<RequestSession, T> action) {
+        if (executor.isShutdown()) return CompletableFuture.failedFuture(new MusicException(MusicError.RATE_LIMITED));
+        SessionCookie cookie = credentials.get();
+        var session = new RequestSession(cookie, cookiesFor(cookie));
+        return AsyncTasks.submit(executor, () -> action.apply(session));
+    }
+
     @Override
     public CompletableFuture<Track> getTrack(SongId id) {
-        return AsyncTasks.submit(executor, () -> {
-            JsonObject root = request("/api/song/detail/?id=" + id + "&ids=%5B" + id + "%5D");
+        return submit(session -> {
+            JsonObject root = request("/api/song/detail/?id=" + id + "&ids=%5B" + id + "%5D", session);
             try {
                 JsonArray songs = root.getAsJsonArray("songs");
                 if (songs == null || songs.isEmpty()) throw new MusicException(MusicError.UNAVAILABLE);
@@ -73,9 +83,9 @@ public final class NeteaseMusicProvider implements MusicProvider {
         var songs = java.util.List.copyOf(ids);
         if (songs.isEmpty()) return CompletableFuture.completedFuture(java.util.List.of());
         if (songs.size() > 50) throw new IllegalArgumentException("metadata batch");
-        return AsyncTasks.submit(executor, () -> {
+        return submit(session -> {
             String query = songs.stream().map(SongId::toString).collect(java.util.stream.Collectors.joining("%2C", "%5B", "%5D"));
-            var root = request("/api/song/detail/?ids=" + query);
+            var root = request("/api/song/detail/?ids=" + query, session);
             try {
                 var found = new ArrayList<Track>();
                 for (var element : root.getAsJsonArray("songs")) {
@@ -94,10 +104,10 @@ public final class NeteaseMusicProvider implements MusicProvider {
             if (offset < 0 || offset > SongSearchResult.MAX_OFFSET || limit < 1 || limit > SongSearchResult.MAX_PAGE_SIZE)
                 throw new IllegalArgumentException("search_page");
         } catch (IllegalArgumentException invalid) { return CompletableFuture.failedFuture(invalid); }
-        return AsyncTasks.submit(executor, () -> {
-            SessionCookie cookie = credentials.get();
+        return submit(session -> {
+            SessionCookie cookie = session.cookie();
             try {
-                LoginCookies cookies = cookiesFor(cookie);
+                LoginCookies cookies = session.cookies();
                 var sent = cookies.snapshot();
                 JsonObject payload = new JsonObject();
                 payload.addProperty("s", query); payload.addProperty("type", 1);
@@ -132,8 +142,8 @@ public final class NeteaseMusicProvider implements MusicProvider {
     }
 
     @Override public CompletableFuture<Lyrics> getLyrics(SongId id) {
-        return AsyncTasks.submit(executor, () -> {
-            JsonObject root = request("/api/song/lyric?id=" + id + "&lv=-1&kv=-1&tv=-1&rv=-1");
+        return submit(session -> {
+            JsonObject root = request("/api/song/lyric?id=" + id + "&lv=-1&kv=-1&tv=-1&rv=-1", session);
             return Lyrics.parse(lyricText(root, "lrc"), lyricText(root, "tlyric"));
         });
     }
@@ -144,8 +154,8 @@ public final class NeteaseMusicProvider implements MusicProvider {
     }
 
     @Override public CompletableFuture<Playlist> getPlaylist(SongId id) {
-        return AsyncTasks.submit(executor, () -> {
-            JsonObject root = request("/api/v6/playlist/detail?id=" + id + "&n=" + PlaybackQueue.MAX_TRACKS + "&s=0", credentials.get(), 4 * MAX_JSON);
+        return submit(session -> {
+            JsonObject root = request("/api/v6/playlist/detail?id=" + id + "&n=" + PlaybackQueue.MAX_TRACKS + "&s=0", session, 4 * MAX_JSON);
             try {
                 JsonObject list = root.getAsJsonObject("playlist");
                 if (list == null || !id.toString().equals(list.get("id").getAsString())) throw new MusicException(MusicError.INVALID_RESPONSE);
@@ -171,10 +181,10 @@ public final class NeteaseMusicProvider implements MusicProvider {
 
     @Override
     public CompletableFuture<PlaybackResource> resolvePlayback(SongId id) {
-        return AsyncTasks.submit(executor, () -> {
-            SessionCookie cookie = credentials.get();
+        return submit(session -> {
+            SessionCookie cookie = session.cookie();
             try {
-                LoginCookies cookies = cookiesFor(cookie);
+                LoginCookies cookies = session.cookies();
                 // Keep resource bootstrap/rotation ordered without serializing unrelated HTTP.
                 cookies.lockPlayback();
                 try {
@@ -249,19 +259,17 @@ public final class NeteaseMusicProvider implements MusicProvider {
         return new PlaybackResource(id, NeteaseUris.audio(data.get("url").getAsString()), deadline);
     }
 
-    private JsonObject request(String path) {
-        return request(path, credentials.get());
+    private JsonObject request(String path, RequestSession session) {
+        return request(path, session, MAX_JSON);
     }
-    private JsonObject request(String path, SessionCookie cookie) {
-        return request(path, cookie, MAX_JSON);
-    }
-    private JsonObject request(String path, SessionCookie cookie, int maxBytes) {
+    private JsonObject request(String path, RequestSession session, int maxBytes) {
+        SessionCookie cookie = session.cookie();
         try {
             URI uri = URI.create("https://music.163.com" + path);
             byte[] body;
             if (cookie == null) body = transport.get(uri, maxBytes);
             else {
-                LoginCookies cookies = cookiesFor(cookie);
+                LoginCookies cookies = session.cookies();
                 var sent = cookies.snapshot();
                 var response = transport.getWithCookies(uri, maxBytes, sent.session());
                 cookies.accept(response.setCookies(), sent);

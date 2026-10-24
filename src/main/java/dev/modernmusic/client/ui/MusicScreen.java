@@ -42,7 +42,7 @@ public abstract class MusicScreen extends Screen {
             @Override public int guiWidth() { return width; }
             @Override public int guiHeight() { return height; }
             @Override public void enableScissor(int left, int top, int right, int bottom) {
-                // In 1.21.1 scissor bounds bypass the pose stack and use native GUI coordinates.
+                // Scissor bounds bypass the pose stack and use native GUI coordinates.
                 flush();
                 var pose = pose().last().pose();
                 super.enableScissor((int) Math.floor(left * pose.m00() + pose.m30()),
@@ -51,11 +51,6 @@ public abstract class MusicScreen extends Screen {
                         (int) Math.ceil(bottom * pose.m11() + pose.m31()));
             }
             @Override public void disableScissor() { flush(); super.disableScissor(); }
-            @Override public boolean containsPointInScissor(int x, int y) {
-                var pose = pose().last().pose();
-                return super.containsPointInScissor((int) Math.floor(x * pose.m00() + pose.m30()),
-                        (int) Math.floor(y * pose.m11() + pose.m31()));
-            }
         };
         graphics.flush();
         local.pose().last().pose().set(graphics.pose().last().pose());
@@ -73,6 +68,7 @@ public abstract class MusicScreen extends Screen {
     }
 
     protected void renderMusic(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+        renderBackground(graphics);
         super.render(graphics, mouseX, mouseY, delta);
     }
 
@@ -86,12 +82,10 @@ public abstract class MusicScreen extends Screen {
         setTooltipForNextRenderPass(ThemedTooltips.split(tooltip, font, width), positioner, override);
     }
 
-    @Override protected final void clearTooltipForNextRenderPass() {
-        super.clearTooltipForNextRenderPass();
-        tooltip = null; tooltipPositioner = null;
-    }
 
     /** Converts a music widget coordinate to the vanilla GUI coordinate used by mouse events. */
+    protected final void clearTooltipForNextRenderPass() { tooltip = null; tooltipPositioner = null; }
+
     public final double toGuiCoordinate(double coordinate) { return coordinate * guiScale; }
 
     @Override public final void mouseMoved(double x, double y) { super.mouseMoved(x / guiScale, y / guiScale); }
@@ -108,10 +102,10 @@ public abstract class MusicScreen extends Screen {
     @Override public final boolean mouseDragged(double x, double y, int button, double dx, double dy) {
         return super.mouseDragged(x / guiScale, y / guiScale, button, dx / guiScale, dy / guiScale);
     }
-    @Override public final boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
-        return scrollMusic(x / guiScale, y / guiScale, horizontal, vertical);
+    @Override public final boolean mouseScrolled(double x, double y, double vertical) {
+        return scrollMusic(x / guiScale, y / guiScale, 0, vertical);
     }
     protected boolean scrollMusic(double x, double y, double horizontal, double vertical) {
-        return super.mouseScrolled(x, y, horizontal, vertical);
+        return super.mouseScrolled(x, y, vertical);
     }
 }

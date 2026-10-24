@@ -8,6 +8,8 @@ import java.util.function.Predicate;
 /** Server-thread-owned room authority, with a controllable monotonic clock for tests. */
 public final class RoomService {
     public static final int MAX_ROOMS = 64, MAX_MEMBERS = 16, DEFAULT_ROOM_LIMIT = 2;
+    /** Bounds the complete member list in every public-room update, including escaped names. */
+    public static final int MAX_PUBLIC_MEMBERS = 1_000;
     /** Stable server-owned identity, independent of any player's membership or creation quota. */
     public static final UUID PUBLIC_ROOM_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
     public static final UUID SERVER_OWNER = new UUID(0, 0);
@@ -146,7 +148,7 @@ public final class RoomService {
         if (permissionsChanged) room.revision++;
         return changed || permissionsChanged;
     }
-    private int roomLimit() { return Math.clamp(roomLimit.getAsInt(), 0, MAX_ROOMS); }
+    private int roomLimit() { return dev.modernmusic.compat.Java17.clamp(roomLimit.getAsInt(), 0, MAX_ROOMS); }
     public static final class Rejected extends RuntimeException {
         public final String key;
         public Rejected(String reason) { super(reason); key = "modernmusic.room.error." + reason; }
@@ -228,6 +230,22 @@ public final class RoomService {
         if (rate == null || now - rate.window >= 1_000) rate = new Rate(now, 0);
         require(rate.count < 12, "rate"); rates.put(sender, new Rate(rate.window, rate.count + 1));
     }
+    /** First usable report fills unknown metadata only; stale audio never changes a later playback. */
+    public boolean reportDuration(UUID sender, RoomDurationReport report, long now) {
+        rate(sender, now);
+        reconcileAuthority();
+        Room room = rooms.get(report.room()); require(room != null, "missing");
+        require(epoch.equals(report.epoch()), "stale");
+        require(room.id.equals(memberships.get(sender)), "member");
+        require(room.playbackRevision == report.playbackRevision()
+                && room.queue.current().map(song -> song.toString().equals(report.song())).orElse(false), "stale");
+        require(room.state != RoomSnapshot.State.STOPPED, "input");
+        // Concurrent reports may arrive before the first accepted report has been broadcast.
+        if (room.duration > 0) return false;
+        require(snapshot(room).canReportDuration(sender), "permission");
+        room.duration = report.durationMs(); room.revision++;
+        return true;
+    }
     /** One atomic append and one queue revision, regardless of playlist length. */
     public RoomImportResult append(UUID sender, RoomImportRequest request, long now) {
         rate(sender, now);
@@ -292,7 +310,8 @@ public final class RoomService {
             require(!memberships.containsKey(sender), "already_joined");
             boolean publicRoom = PUBLIC_ROOM_ID.equals(room.id);
             require(publicRoom || room.owner.equals(sender) || room.grants.containsKey(sender) || room.invites.getOrDefault(sender, 0L) > now, "invite");
-            require(publicRoom || room.members.size() < MAX_MEMBERS, "full");
+            require(room.members.size() < (publicRoom ? MAX_PUBLIC_MEMBERS : MAX_MEMBERS),
+                    publicRoom ? "public_full" : "full");
             var grant = room.grants.get(sender);
             var member = new RoomSnapshot.Member(sender, senderName, grant != null && grant.dj(), grant != null && grant.requester());
             room.invites.remove(sender); room.grants.put(sender, member);
@@ -308,8 +327,7 @@ public final class RoomService {
                 && command.action() != RoomCommand.Action.KICK, "team_managed");
         boolean additive = command.action() == RoomCommand.Action.ADD || command.action() == RoomCommand.Action.INVITE;
         require(snapshot(room).allows(sender, command.action()), command.action().permissionError());
-        if (!additive) require(command.revision() == (command.action() == RoomCommand.Action.DURATION
-                ? room.playbackRevision : room.revision), "stale");
+        if (!additive) require(command.revision() == room.revision, "stale");
         switch (command.action()) {
             case INVITE -> {
                 require(target != null && !room.members.containsKey(target), "target");
@@ -355,22 +373,13 @@ public final class RoomService {
             }
             case STOP -> reset(room, now, false);
             case SEEK -> {
-                require(room.state != RoomSnapshot.State.STOPPED && command.value() >= 0
-                        && command.value() <= dev.modernmusic.audio.AudioFiles.MAX_DURATION_MS, "input");
+                require(room.state != RoomSnapshot.State.STOPPED && command.value() >= 0 && command.value() <= 3_600_000, "input");
                 room.position = room.duration > 0 ? Math.min(command.value(), room.duration) : command.value();
                 room.anchor = now + (room.state == RoomSnapshot.State.PLAYING ? START_DELAY : 0);
             }
             case NEXT -> advance(room, now, false);
             case MODE -> { room.queue.mode(room.queue.mode().next()); room.queueRevision++; }
-            case DURATION -> {
-                require(room.state != RoomSnapshot.State.STOPPED && command.value() > 0
-                        && command.value() <= dev.modernmusic.audio.AudioFiles.MAX_DURATION_MS, "input");
-                require(room.queue.current().map(song -> song.toString().equals(command.text())).orElse(false), "stale");
-                // Any listening member can supply missing timing after the last DJ leaves or mutes.
-                // Reports are pinned to this playback; later reports cannot change an established clock.
-                if (room.duration > 0) return;
-                room.duration = command.value();
-            }
+            case DURATION -> { require(room.state != RoomSnapshot.State.STOPPED && command.value() > 0 && command.value() <= 3_600_000, "input"); room.duration = command.value(); }
             default -> throw new Rejected("input");
         }
         room.revision++;

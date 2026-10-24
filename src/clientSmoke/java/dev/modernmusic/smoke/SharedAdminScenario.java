@@ -10,7 +10,7 @@ import java.util.UUID;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.contents.TranslatableContents;
-import net.neoforged.neoforge.network.PacketDistributor;
+import dev.modernmusic.network.ForgeNetwork;
 
 /** Exercises real admin packets and widgets, with a synthetic upstream QR/cookie only. */
 final class SharedAdminScenario {
@@ -117,7 +117,7 @@ final class SharedAdminScenario {
                 SharedAdminNetwork.clientSnapshot = value -> {
                     if (value.view().equals(forged)) denied = value; else receiver.accept(value);
                 };
-                PacketDistributor.sendToServer(new SharedAdminNetwork.CommandPayload(forged, 1, SharedAdminAction.COOKIE_LOGIN, SharedAccountFixture.cookie()));
+                ForgeNetwork.sendToServer(new SharedAdminNetwork.CommandPayload(forged, 1, SharedAdminAction.COOKIE_LOGIN, SharedAccountFixture.cookie()));
                 step++;
             }
             case 1 -> {

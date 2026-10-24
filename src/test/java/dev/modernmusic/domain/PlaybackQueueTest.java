@@ -32,7 +32,7 @@ class PlaybackQueueTest {
         var queue = new PlaybackQueue(); for (int i = 1; i < 400; i++) queue.add(new SongId(i));
         var result = queue.append(java.util.List.of(new SongId(1), new SongId(500), new SongId(500), new SongId(501)));
         assertEquals(1, result.added()); assertEquals(2, result.skipped()); assertEquals(3, result.processed());
-        assertEquals(400, queue.entries().size()); assertEquals(new SongId(500), queue.entries().getLast());
+        assertEquals(400, queue.entries().size()); assertEquals(new SongId(500), dev.modernmusic.compat.Java17.last(queue.entries()));
         assertEquals(new PlaybackQueue.AppendResult(0, 2), queue.append(java.util.List.of(new SongId(1), new SongId(500))));
     }
     @Test void repeatModesDistinguishNaturalFinishAndManualNext() {

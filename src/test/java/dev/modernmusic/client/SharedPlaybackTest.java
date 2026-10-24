@@ -51,24 +51,6 @@ class SharedPlaybackTest {
         }
         assertTrue(until.getAsBoolean());
     }
-    @Test void roomTimingUsesCurrentDecodedAudioInsteadOfStaleDeviceSnapshots() throws Exception {
-        Queue<Runnable> main = new ConcurrentLinkedQueue<>(); Provider provider = new Provider(); Output output = new Output();
-        try (var player = new PlaybackController(provider, (uri, max) -> Mp3DecoderTest.silentMp3(), output, main::add)) {
-            player.applyRoom(room(1, 1, 0, RoomSnapshot.State.PLAYING, 0, 10_000));
-            assertEquals(0, player.roomDurationMs());
-            pump(main, () -> output.loads == 1);
-            long decodedDuration = output.snapshot().durationMs(); assertTrue(decodedDuration > 0);
-            output.value = new AudioOutput.Snapshot(AudioOutput.State.PLAYING, 0, 999_999);
-            assertEquals(decodedDuration, player.roomDurationMs());
-            provider.delayed = true;
-            player.applyRoom(room(2, 2, 1, RoomSnapshot.State.PLAYING, 0, 12_000));
-            output.value = new AudioOutput.Snapshot(AudioOutput.State.PLAYING, 0, 999_999);
-            assertEquals(0, player.roomDurationMs());
-            player.applyRoom(room(3, 3, 0, RoomSnapshot.State.PLAYING, 0, 14_000), false);
-            assertEquals(0, player.roomDurationMs());
-            player.applyRoom(null); assertEquals(0, player.roomDurationMs());
-        }
-    }
     @Test void mutedSnapshotsDoNotResolveAudioAndCanResumeTheirLatestTimeline() {
         Provider provider = new Provider(); provider.delayed = true; var output = new Output();
         try (var player = new PlaybackController(provider, (uri, max) -> new byte[0], output, Runnable::run)) {

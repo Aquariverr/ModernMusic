@@ -52,6 +52,9 @@ public final class PlaybackController implements AutoCloseable {
     private boolean synchronizedPaused = true;
     private CompletableFuture<?> pendingMetadata;
     private long metadataGeneration;
+    private final java.util.function.LongSupplier metadataClock;
+    private long nextMetadataAttempt = Long.MIN_VALUE;
+    private SongId metadataLoadingSong;
     private final Map<SongId, Long> metadataRetry = new HashMap<>();
     private final Set<SongId> localMetadataNeeded = new LinkedHashSet<>();
 
@@ -134,19 +137,32 @@ public final class PlaybackController implements AutoCloseable {
     private void loadQueueMetadata() {
         if (pendingMetadata != null || closed) return;
         if (localMetadataNeeded.isEmpty() && !shared()) return;
+        long now = metadataClock.getAsLong();
+        SongId loadingSong = state == State.LOADING && queue.index() >= 0 ? queue.entries().get(queue.index()) : null;
+        // Retry waits are idle work. Queue edits/imports invalidate the deadline; leaving LOADING
+        // also makes the song excluded from a metadata batch eligible again.
+        if (now < nextMetadataAttempt && java.util.Objects.equals(loadingSong, metadataLoadingSong)) return;
+        metadataLoadingSong = loadingSong;
+        nextMetadataAttempt = Long.MAX_VALUE;
         if (!localMetadataNeeded.isEmpty()) {
             var retained = library.songIds();
             retained.addAll(queue.entries());
             localMetadataNeeded.removeIf(id -> !retained.contains(id) || tracks.containsKey(id));
         }
-        long now = System.nanoTime() / 1_000_000;
         var needed = new LinkedHashSet<>(localMetadataNeeded);
         if (shared()) needed.addAll(queue.entries());
-        var songs = needed.stream().filter(id -> !tracks.containsKey(id))
-                .filter(id -> state != State.LOADING || queue.current().filter(id::equals).isEmpty())
-                .filter(id -> now >= metadataRetry.getOrDefault(id, 0L)).limit(50).toList();
+        var due = new java.util.ArrayList<SongId>(Math.min(50, needed.size()));
+        for (SongId id : needed) {
+            if (tracks.containsKey(id) || id.equals(loadingSong)) continue;
+            long retryAt = metadataRetry.getOrDefault(id, 0L);
+            if (now < retryAt) nextMetadataAttempt = Math.min(nextMetadataAttempt, retryAt);
+            else if (due.size() < 50) due.add(id);
+            else nextMetadataAttempt = now; // Another batch can start as soon as this one completes.
+        }
+        var songs = java.util.List.copyOf(due);
         if (songs.isEmpty()) return;
         songs.forEach(id -> metadataRetry.put(id, now + 30_000));
+        nextMetadataAttempt = Math.min(nextMetadataAttempt, now + 30_000);
         long token = metadataGeneration;
         var request = provider.getTracks(songs); pendingMetadata = request;
         request.whenComplete((found, error) -> mainThread.execute(() -> {
@@ -163,6 +179,7 @@ public final class PlaybackController implements AutoCloseable {
     private void loadAddedMetadata(SongId id) {
         if (tracks.containsKey(id)) return;
         localMetadataNeeded.add(id);
+        nextMetadataAttempt = Long.MIN_VALUE;
         loadQueueMetadata();
     }
     /** Room controls describe the server timeline even while this client buffers or is muted. */
@@ -188,7 +205,12 @@ public final class PlaybackController implements AutoCloseable {
         this(provider, transport, output, mainThread, null);
     }
     public PlaybackController(MusicProvider provider, HttpTransport transport, AudioOutput output, Executor mainThread, QueueStore queueStore) {
+        this(provider, transport, output, mainThread, queueStore, () -> System.nanoTime() / 1_000_000);
+    }
+    PlaybackController(MusicProvider provider, HttpTransport transport, AudioOutput output, Executor mainThread, QueueStore queueStore,
+            java.util.function.LongSupplier metadataClock) {
         this.provider = provider; this.transport = transport; this.output = output; this.mainThread = mainThread;
+        this.metadataClock = java.util.Objects.requireNonNull(metadataClock);
         this.search = new SongSearchController(provider, mainThread);
         this.queueStore = queueStore;
         if (queueStore != null) {
@@ -202,6 +224,7 @@ public final class PlaybackController implements AutoCloseable {
                     if (!shared()) selectStoppedTrack();
                 }
                 queuesReady = true;
+                nextMetadataAttempt = Long.MIN_VALUE;
             }));
         }
     }
@@ -282,6 +305,7 @@ public final class PlaybackController implements AutoCloseable {
         if (queueStore != null && queuesReady) queueStore.save(library.snapshot(tracks.values()));
     }
     private void pruneTracks() {
+        nextMetadataAttempt = Long.MIN_VALUE;
         var retained = library.songIds();
         if (shared()) retained.addAll(queue.entries());
         tracks.keySet().retainAll(retained);
@@ -457,7 +481,9 @@ public final class PlaybackController implements AutoCloseable {
 
     public void play(int index) {
         if (route(dev.modernmusic.room.RoomCommand.Action.PLAY, index)) return;
-        if (closed || !queuesReady) return;
+        // The authoritative room queue is independent of the personal library still loading.
+        // Consuming its playback revision without starting here would lose this PLAYING snapshot.
+        if (closed || !queuesReady && !applyingShared) return;
         var selected = queue.select(index);
         if (selected.isEmpty() || closed) return;
         if (!shared() && bufferedAudio != null && track != null && track.id().equals(selected.get())) {
@@ -537,7 +563,7 @@ public final class PlaybackController implements AutoCloseable {
     public void tick(float gameVolume) {
         if (closed) return;
         loadQueueMetadata();
-        output.volume(volume * Math.clamp(gameVolume, 0, 1));
+        output.volume(volume * dev.modernmusic.compat.Java17.clamp(gameVolume, 0, 1));
         if (state == State.IDLE || state == State.STOPPED || state == State.ERROR) return;
         switch (output.snapshot().state()) {
             case PLAYING -> { state = State.PLAYING; message = "modernmusic.status.playing"; }
@@ -583,6 +609,8 @@ public final class PlaybackController implements AutoCloseable {
         if (pendingMetadata != null) { pendingMetadata.cancel(true); pendingMetadata = null; }
         metadataRetry.clear();
         localMetadataNeeded.clear();
+        nextMetadataAttempt = Long.MIN_VALUE;
+        metadataLoadingSong = null;
         search.reset();
         cancelImport();
         lyrics = Lyrics.EMPTY; lyricMessage = "modernmusic.lyrics.empty";
@@ -612,7 +640,7 @@ public final class PlaybackController implements AutoCloseable {
     /** Rejoin the existing timeline after changing credential source, without issuing room controls. */
     public void playbackSourceChanged() { suspend(); sharedPlaybackRevision = -1; }
     public void seek(long positionMs) { if (route(dev.modernmusic.room.RoomCommand.Action.SEEK, positionMs)) return; if (state == State.PLAYING || state == State.PAUSED) output.seek(positionMs); }
-    public void volume(float value) { volume = Math.clamp(value, 0, 1); }
+    public void volume(float value) { volume = dev.modernmusic.compat.Java17.clamp(value, 0, 1); }
     public float volume() { return volume; }
     public State state() { return state; }
     public boolean suppressesGameMusic() {
@@ -626,13 +654,6 @@ public final class PlaybackController implements AutoCloseable {
     public Track track(SongId id) { return tracks.get(id); }
     public PlaybackQueue queue() { return queue; }
     public AudioOutput.Snapshot audio() { return output.snapshot(); }
-
-    /** Decoded timing for this room playback, independent of delayed audio-device snapshots. */
-    public long roomDurationMs() {
-        return shared != null && shared.state() != dev.modernmusic.room.RoomSnapshot.State.STOPPED
-                && sharedPlaybackRevision == shared.playbackRevision() && bufferedAudio != null && track != null
-                && queue.current().filter(track.id()::equals).isPresent() ? bufferedAudio.durationMs() : 0;
-    }
 
     /** Samples existing decoded audio on the UI thread; paused/loading/stopped players settle to silence. */
     public void sampleWaveform(float[] levels) {

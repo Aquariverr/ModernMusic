@@ -150,8 +150,8 @@ class PersonalQueueInRoomTest {
         }
         try (var store = new QueueStore(file)) {
             var saved = store.load().join();
-            assertEquals("Saved in group", saved.queues().getFirst().name());
-            assertEquals(List.of(new SongId(8)), saved.queues().getFirst().songs());
+            assertEquals("Saved in group", saved.queues().get(0).name());
+            assertEquals(List.of(new SongId(8)), saved.queues().get(0).songs());
             assertEquals(List.of(new SongId(8)), saved.tracks().stream().map(Track::id).toList());
         }
     }
@@ -179,8 +179,8 @@ class PersonalQueueInRoomTest {
             assertTrue(player.importPlaylist("99"));
             player.applyRoom(cleared, false); // A muted heartbeat must not cancel a pending import.
             provider.playlist.complete(new Playlist("Added", List.of(new SongId(9)), List.of(), 1));
-            assertEquals(1, requests.size()); assertEquals(full.id(), requests.getFirst().room());
-            assertEquals(List.of("9"), requests.getFirst().songs()); assertEquals(1, player.importedCount());
+            assertEquals(1, requests.size()); assertEquals(full.id(), requests.get(0).room());
+            assertEquals(List.of("9"), requests.get(0).songs()); assertEquals(1, player.importedCount());
             assertEquals(List.of(new SongId(7)), player.personalQueue().entries()); assertEquals(0, output.loads);
         }
     }

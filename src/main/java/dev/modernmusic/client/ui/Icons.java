@@ -39,7 +39,7 @@ final class Icons {
     static void draw(GuiGraphics g, PlayerTheme.Icon icon, float x, float y, int color) {
         Matrix4f pose = g.pose().last().pose();
         float gui = (float) Minecraft.getInstance().getWindow().getGuiScale();
-        int scale = Math.clamp(Math.round(pose.m00() * gui), 1, MAX_SCALE);
+        int scale = dev.modernmusic.compat.Java17.clamp(Math.round(pose.m00() * gui), 1, MAX_SCALE);
         boolean pixel = PlayerTheme.pixel();
         // Every glyph follows the complete transform; the raster atlas may have a different sampling scale.
         int size = Math.max(1, Math.round(BOX * pose.m00() * gui));
@@ -74,12 +74,12 @@ final class Icons {
 
     private static void quad(Matrix4f matrix, ResourceLocation atlas, float[] uv, int left, int top, int size, int color) {
         RenderSystem.setShaderTexture(0, atlas);
-        var buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
-        buffer.addVertex(matrix, left, top, 0).setUv(uv[0], uv[1]).setColor(color);
-        buffer.addVertex(matrix, left, top + size, 0).setUv(uv[0], uv[3]).setColor(color);
-        buffer.addVertex(matrix, left + size, top + size, 0).setUv(uv[2], uv[3]).setColor(color);
-        buffer.addVertex(matrix, left + size, top, 0).setUv(uv[2], uv[1]).setColor(color);
-        BufferUploader.drawWithShader(buffer.buildOrThrow());
+        var buffer = Shapes.beginBuffer();
+        buffer.vertex(matrix, left, top, 0).uv(uv[0], uv[1]).color(color).endVertex();
+        buffer.vertex(matrix, left, top + size, 0).uv(uv[0], uv[3]).color(color).endVertex();
+        buffer.vertex(matrix, left + size, top + size, 0).uv(uv[2], uv[3]).color(color).endVertex();
+        buffer.vertex(matrix, left + size, top, 0).uv(uv[2], uv[1]).color(color).endVertex();
+        BufferUploader.drawWithShader(buffer.end());
     }
 
     /** Every transparent texel of the pixel atlas that touches a glyph texel, including diagonally. */

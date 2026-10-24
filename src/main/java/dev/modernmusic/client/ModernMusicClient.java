@@ -21,21 +21,20 @@ import dev.modernmusic.client.ui.UiFont;
 import java.time.Clock;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.fml.ModContainer;
-import net.neoforged.fml.common.Mod;
-import net.neoforged.neoforge.client.event.*;
-import net.neoforged.neoforge.client.event.sound.SoundEngineLoadEvent;
-import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
-import net.neoforged.neoforge.client.settings.KeyConflictContext;
-import net.neoforged.neoforge.client.settings.KeyModifier;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.GameShuttingDownEvent;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.fml.ModContainer;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.client.event.*;
+import net.minecraftforge.client.event.sound.SoundEngineLoadEvent;
+import net.minecraftforge.client.ConfigScreenHandler;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.client.settings.KeyConflictContext;
+import net.minecraftforge.client.settings.KeyModifier;
+import net.minecraftforge.common.MinecraftForge;
 import org.lwjgl.glfw.GLFW;
 
 /** Separate physical-client entry point: dedicated servers never construct audio/UI classes. */
-@Mod(value = ModernMusic.MOD_ID, dist = Dist.CLIENT)
 public final class ModernMusicClient {
     private final KeyMapping openPlayer = new KeyMapping("key.modernmusic.open", KeyConflictContext.IN_GAME,
             KeyModifier.CONTROL, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_M, "key.categories.modernmusic");
@@ -53,21 +52,24 @@ public final class ModernMusicClient {
     private RoomClient rooms;
     private final GameAudioBridge audio = new GameAudioBridge(() -> player);
 
-    public ModernMusicClient(IEventBus bus, ModContainer container) {
+    public static void initialize() { new ModernMusicClient(); }
+
+    private ModernMusicClient() {
+        var bus = net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext.get().getModEventBus();
+        var container = net.minecraftforge.fml.ModLoadingContext.get();
         bus.addListener(this::registerKeys);
         bus.addListener(this::soundReloaded);
         bus.addListener(this::registerHud);
         bus.addListener(this::registerReload);
         bus.addListener(this::registerShaders);
-        NeoForge.EVENT_BUS.addListener(this::tick);
-        NeoForge.EVENT_BUS.addListener(this::login);
-        NeoForge.EVENT_BUS.addListener(this::logout);
-        NeoForge.EVENT_BUS.addListener(this::shutdown);
-        NeoForge.EVENT_BUS.addListener(audio::selectMusic);
-        NeoForge.EVENT_BUS.addListener(audio::playSound);
-        NeoForge.EVENT_BUS.addListener(ThemedTooltips::render);
-        container.registerExtensionPoint(IConfigScreenFactory.class,
-                (mod, parent) -> new PlayerScreen(parent, player(), account, hud, ModernMusicClient::account));
+        MinecraftForge.EVENT_BUS.addListener(this::tick);
+        MinecraftForge.EVENT_BUS.addListener(this::login);
+        MinecraftForge.EVENT_BUS.addListener(this::logout);
+        MinecraftForge.EVENT_BUS.addListener(this::shutdown);
+        MinecraftForge.EVENT_BUS.addListener(audio::playSound);
+        MinecraftForge.EVENT_BUS.addListener(ThemedTooltips::render);
+        container.registerExtensionPoint(ConfigScreenHandler.ConfigScreenFactory.class,
+                () -> new ConfigScreenHandler.ConfigScreenFactory((game, parent) -> new PlayerScreen(parent, player(), account, hud, ModernMusicClient::account)));
     }
 
     private PlaybackController player() {
@@ -112,15 +114,15 @@ public final class ModernMusicClient {
     private void registerKeys(RegisterKeyMappingsEvent event) {
         for (var key : new KeyMapping[]{openPlayer, pause, next, stop, toggleHud}) event.register(key);
     }
-    private void registerHud(RegisterGuiLayersEvent event) {
-        event.registerAboveAll(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(ModernMusic.MOD_ID, "music_hud"), (graphics, delta) -> {
+    private void registerHud(RegisterGuiOverlaysEvent event) {
+        event.registerAboveAll("music_hud", (gui, graphics, delta, width, height) -> {
             if (hud != null) MusicHud.render(graphics, player, hud, graphics.guiWidth(), graphics.guiHeight(), false);
         });
     }
     private void registerShaders(RegisterShadersEvent event) {
         try {
             event.registerShader(new net.minecraft.client.renderer.ShaderInstance(event.getResourceProvider(),
-                    net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(ModernMusic.MOD_ID, "ui_shape"),
+                    new net.minecraft.resources.ResourceLocation(ModernMusic.MOD_ID, "ui_shape"),
                     com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_TEX_COLOR), dev.modernmusic.client.ui.Shapes::shader);
         } catch (java.io.IOException error) {
             // Shapes still draw with the vanilla shader; only the faintest fades are lost.
@@ -132,10 +134,13 @@ public final class ModernMusicClient {
         event.registerReloadListener((net.minecraft.server.packs.resources.ResourceManagerReloadListener)
                 manager -> Minecraft.getInstance().execute(() -> {
                     ArtworkCache.clearIfCreated();
+                    PlayerTheme.reloadSprites();
+                    UiFont.clear();
                     if (player != null) player.audioReloaded();
                 }));
     }
-    private void tick(ClientTickEvent.Post event) {
+    private void tick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
         Minecraft game = Minecraft.getInstance();
         if (hud == null && game.getOverlay() == null) settings();
         // Build the smooth font for the current GUI scale before a screen needs it (after loading or resizing).
@@ -163,7 +168,7 @@ public final class ModernMusicClient {
     private void soundReloaded(SoundEngineLoadEvent event) {
         if (player != null) Minecraft.getInstance().execute(() -> player.audioReloaded());
     }
-    private void shutdown(GameShuttingDownEvent event) {
+    private void shutdown(net.minecraftforge.event.GameShuttingDownEvent event) {
         try { try { if (account != null) account.close(); } finally { try { if (qqAccount != null) qqAccount.close(); } finally { if (kugouAccount != null) kugouAccount.close(); accounts.clear(); } } }
         finally { try { if (player != null) player.close(); } finally { ArtworkCache.closeIfCreated(); } }
     }

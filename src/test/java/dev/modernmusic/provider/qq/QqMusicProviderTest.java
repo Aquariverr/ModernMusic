@@ -54,7 +54,7 @@ class QqMusicProviderTest {
         var http = new Http(); var cookie = SessionCookie.parse("uin=123; qm_keyst=fixture", MusicPlatform.QQ); var expired = new ArrayList<SessionCookie>();
         try (var provider = new QqMusicProvider(http, Clock.systemUTC(), () -> cookie, expired::add)) {
             http.rpc("{\"lyric\":\"" + Base64.getEncoder().encodeToString("[00:01]line".getBytes(StandardCharsets.UTF_8)) + "\"}");
-            assertEquals("line", provider.getLyrics(new SongId(123, MusicPlatform.QQ)).join().lines().getFirst().text());
+            assertEquals("line", provider.getLyrics(new SongId(123, MusicPlatform.QQ)).join().lines().get(0).text());
             http.response = "{\"code\":0,\"cdlist\":[{\"dissname\":\"List\",\"total_song_num\":1,\"songlist\":[" + SONG + "]}]}";
             assertEquals(List.of(new SongId(123, MusicPlatform.QQ)), provider.getPlaylist(new SongId(5, MusicPlatform.QQ)).join().ids());
             http.response = "{\"code\":1000}";

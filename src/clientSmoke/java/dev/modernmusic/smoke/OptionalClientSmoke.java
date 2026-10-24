@@ -1,4 +1,5 @@
 package dev.modernmusic.smoke;
+import dev.modernmusic.network.ForgeNetwork;
 
 import dev.modernmusic.ModernMusic;
 import dev.modernmusic.client.PlaybackController;
@@ -36,13 +37,12 @@ import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.network.chat.Component;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.fml.common.Mod;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.common.NeoForge;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.common.MinecraftForge;
 
 /** Real negotiation with a server lacking the mod, followed by connection changes in one client. */
-@Mod(value = "modernmusic_smoke", dist = Dist.CLIENT)
 public final class OptionalClientSmoke {
     private int step, loggedStep = -1, frames;
     private long stepDeadline;
@@ -51,9 +51,10 @@ public final class OptionalClientSmoke {
     private RoomClient rooms;
     private Path directory;
     public OptionalClientSmoke() {
-        if (Boolean.getBoolean("modernmusic.optionalClientSmoke")) NeoForge.EVENT_BUS.addListener(this::tick);
+        if (Boolean.getBoolean("modernmusic.optionalClientSmoke")) MinecraftForge.EVENT_BUS.addListener(this::tick);
     }
-    private void tick(ClientTickEvent.Post event) {
+    private void tick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
         if (step < 0) return;
         var game = Minecraft.getInstance();
         try {
@@ -71,7 +72,7 @@ public final class OptionalClientSmoke {
             if (game.getOverlay() != null) return;
             switch (step) {
                 case 0 -> {
-                    if (game.screen instanceof AccessibilityOnboardingScreen) { game.options.onboardingAccessibilityFinished(); game.setScreen(new TitleScreen()); }
+                    if (game.screen instanceof AccessibilityOnboardingScreen) {  game.setScreen(new TitleScreen()); }
                     if (!(game.screen instanceof TitleScreen)) return;
                     if (!Files.exists(directory.resolveSibling("optional-server-smoke").resolve("optional-ready.txt"))) return;
                     game.options.pauseOnLostFocus = false; game.options.renderDistance().set(2); game.options.simulationDistance().set(5);
@@ -123,7 +124,7 @@ public final class OptionalClientSmoke {
                                     net.minecraft.world.Difficulty.PEACEFUL, true, new net.minecraft.world.level.GameRules(), net.minecraft.world.level.WorldDataConfiguration.DEFAULT),
                             new net.minecraft.world.level.levelgen.WorldOptions(0L, false, false),
                             registry -> registry.registryOrThrow(net.minecraft.core.registries.Registries.WORLD_PRESET)
-                                    .getHolderOrThrow(net.minecraft.world.level.levelgen.presets.WorldPresets.FLAT).value().createWorldDimensions(), new TitleScreen());
+                                    .getHolderOrThrow(net.minecraft.world.level.levelgen.presets.WorldPresets.FLAT).value().createWorldDimensions());
                     step++;
                 }
                 case 6 -> {
@@ -155,7 +156,7 @@ public final class OptionalClientSmoke {
                     if (player.state() == PlaybackController.State.ERROR) throw new IllegalStateException("Personal playback failed after reconnect: " + player.message());
                     if (player.audio().positionMs() < 40) return;
                     checkUnavailable();
-                    finish(game, "PASS: joined dedicated NeoForge without Modern Music twice; personal silent MP3 playback and queue preserved; group/FTB/shared-source/admin actions disabled; integrated-server capabilities and group creation restored; disconnect cleared group state");
+                    finish(game, "PASS: joined dedicated Forge without Modern Music twice; personal silent MP3 playback and queue preserved; group/FTB/shared-source/admin actions disabled; integrated-server capabilities and group creation restored; disconnect cleared group state");
                 }
                 default -> throw new IllegalStateException("Unknown step " + step);
             }
@@ -167,9 +168,9 @@ public final class OptionalClientSmoke {
     private static boolean inWorld(Minecraft game) { return game.level != null && game.player != null && game.screen == null && RoomClient.instance() != null; }
     private static void connect(Minecraft game) {
         ConnectScreen.startConnecting(new TitleScreen(), game, new ServerAddress("127.0.0.1", 25577),
-                new ServerData("No Modern Music", "127.0.0.1:25577", ServerData.Type.OTHER), false, null);
+                new ServerData("No Modern Music", "127.0.0.1:25577", false), false);
     }
-    private static void disconnect(Minecraft game) { game.level.disconnect(); game.disconnect(new TitleScreen()); game.setScreen(new TitleScreen()); }
+    private static void disconnect(Minecraft game) { game.level.disconnect(); game.clearLevel(new TitleScreen()); game.setScreen(new TitleScreen()); }
     private void checkUnavailable() {
         var connection = Minecraft.getInstance().getConnection();
         if (connection != null) {
@@ -177,7 +178,7 @@ public final class OptionalClientSmoke {
                     RoomNetwork.ImportPayload.TYPE, RoomNetwork.ImportResultPayload.TYPE, SharedAccountNetwork.StatePayload.TYPE,
                     SharedAccountNetwork.RequestPayload.TYPE, SharedAccountNetwork.ResultPayload.TYPE, SharedAccountNetwork.ProfilePayload.TYPE,
                     SharedAdminNetwork.CommandPayload.TYPE, SharedAdminNetwork.CapabilityPayload.TYPE, SharedAdminNetwork.SnapshotPayload.TYPE))
-                check(!connection.hasChannel(type), "Missing-mod server advertised channel " + type.id());
+                check(!ForgeNetwork.available(connection.getConnection()), "Missing-mod server advertised channel " + type.id());
         }
         check(!rooms.available(), "Group channels advertised without server mod");
         check(!SharedAccountClient.available() && !SharedAccountClient.adminAvailable(), "Shared channels advertised without server mod");

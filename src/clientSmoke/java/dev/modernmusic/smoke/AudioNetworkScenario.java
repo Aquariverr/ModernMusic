@@ -12,7 +12,7 @@ import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.*;
 import net.minecraft.client.Minecraft;
-import net.neoforged.neoforge.network.PacketDistributor;
+import dev.modernmusic.network.ForgeNetwork;
 import static dev.modernmusic.room.RoomCommand.Action.*;
 
 /** Real host/guest packet and PCM smoke; synthetic WAV only, no upstream service or user library. */
@@ -30,6 +30,7 @@ public final class AudioNetworkScenario {
     private CompletableFuture<byte[]> downloading;
     private Track privateTrack, serverTrack;
     private SongId serverId;
+    private boolean personalPlaybackVerified;
     private int step;
     private long nextProgress;
 
@@ -69,7 +70,7 @@ public final class AudioNetworkScenario {
                         if (!(error.getCause() instanceof MusicException music) || music.error() != MusicError.SHARED_FORBIDDEN) throw error;
                     }
                     // Bypass the client capability check; the actual server must reject the forged begin packet.
-                    PacketDistributor.sendToServer(new AudioNetwork.CommandPayload(session, deniedUpload, AudioNetwork.Command.UPLOAD_BEGIN, filename, wav().length, 0, new byte[0]));
+                    ForgeNetwork.sendToServer(new AudioNetwork.CommandPayload(session, deniedUpload, AudioNetwork.Command.UPLOAD_BEGIN, filename, wav().length, 0, new byte[0]));
                 }
                 step++;
             }
@@ -103,9 +104,13 @@ public final class AudioNetworkScenario {
                 player.playPersonal(1); step++;
             }
             case 6 -> {
-                if (player.state() != PlaybackController.State.PLAYING || player.audio().positionMs() < 300) return null;
-                if (!player.track().id().equals(serverId) || player.audio().durationMs() != 30_000) throw new AssertionError("Server audio did not route through local provider/decoder");
-                Files.writeString(directory.resolve("audio-personal.txt"), "PASS: local WAV and server WAV personal playback; catalogue, SHA-256, cancellation, OP capability\n");
+                if (!personalPlaybackVerified) {
+                    if (player.state() != PlaybackController.State.PLAYING || player.audio().positionMs() < 300) return null;
+                    if (!player.track().id().equals(serverId) || player.audio().durationMs() != 30_000) throw new AssertionError("Server audio did not route through local provider/decoder");
+                    Files.writeString(directory.resolve("audio-personal.txt"), "PASS: local WAV and server WAV personal playback; catalogue, SHA-256, cancellation, OP capability\n");
+                    personalPlaybackVerified = true;
+                }
+                // The peer may take longer to start than the 30-second fixture lasts.
                 if (host) {
                     if (!Files.exists(peer.resolve("audio-personal.txt"))) return null;
                     rooms.command(CREATE, "Audio smoke", 0);
@@ -120,7 +125,7 @@ public final class AudioNetworkScenario {
                     rooms.command(INVITE, guest.get().getGameProfile().getName(), 0); rooms.addSong(serverId);
                 } else {
                     if (rooms.update().invitations().isEmpty()) return null;
-                    rooms.join(rooms.update().invitations().getFirst());
+                    rooms.join(rooms.update().invitations().get(0));
                 }
                 step++;
             }
@@ -132,8 +137,8 @@ public final class AudioNetworkScenario {
                     if (refused.added() != 0 || !refused.message().equals("modernmusic.error.local_audio_only")) throw new AssertionError("Client local group selection accepted");
                     rooms.addSong(privateTrack.id());
                     if (!rooms.message().equals("modernmusic.error.local_audio_only")) throw new AssertionError("Client local room command accepted");
-                    PacketDistributor.sendToServer(new RoomNetwork.ImportPayload(new RoomImportRequest(forgedLocal, room.id(), room.epoch(), List.of(privateTrack.id().toString()), 1)));
-                    PacketDistributor.sendToServer(new RoomNetwork.ImportPayload(new RoomImportRequest(missingServer, room.id(), room.epoch(),
+                    ForgeNetwork.sendToServer(new RoomNetwork.ImportPayload(new RoomImportRequest(forgedLocal, room.id(), room.epoch(), List.of(privateTrack.id().toString()), 1)));
+                    ForgeNetwork.sendToServer(new RoomNetwork.ImportPayload(new RoomImportRequest(missingServer, room.id(), room.epoch(),
                             List.of("local:server_" + "f".repeat(32)), 1)));
                 }
                 step++;
