@@ -15,26 +15,48 @@ import net.minecraft.resources.ResourceLocation;
  * Like FontSet itself, this set and its providers are confined to the render thread.
  */
 public final class LazyFontSet extends FontSet {
+    private final TextureManager textures;
     private Set<FontOption> options = Set.of();
-    private boolean indexed;
+    private FontSet obfuscated;
 
-    public LazyFontSet(TextureManager textures, ResourceLocation name) { super(textures, name); }
+    public LazyFontSet(TextureManager textures, ResourceLocation name) {
+        super(textures, name);
+        this.textures = textures;
+    }
 
     @Override public void reload(Set<FontOption> options) {
         this.options = Set.copyOf(options);
-        indexed = false;
+        closeObfuscated();
         resetTextures();
         activeProviders = allProviders.stream().filter(provider -> provider.filter().apply(options))
                 .map(GlyphProvider.Conditional::provider).toList();
     }
 
     @Override public BakedGlyph getRandomGlyph(GlyphInfo glyph) {
-        if (!indexed) {
-            // Preserve vanilla's full candidate pool and advances for the obfuscated style.
-            // Do not reload textures here: a string may already have queued vertices from them.
-            activeProviders = selectProviders(allProviders, options);
-            indexed = true;
+        if (obfuscated == null) {
+            // Use the public reload path so font optimizers can keep selectProviders private.
+            // A separate atlas preserves normal glyphs whose vertices may already be queued.
+            var set = new FontSet(textures, name().withSuffix("/obfuscated"));
+            try {
+                set.reload(allProviders, options);
+                obfuscated = set;
+            } catch (RuntimeException | Error error) {
+                set.close();
+                throw error;
+            }
         }
-        return super.getRandomGlyph(glyph);
+        return obfuscated.getRandomGlyph(glyph);
+    }
+
+    @Override public void close() {
+        closeObfuscated();
+        super.close();
+    }
+
+    private void closeObfuscated() {
+        if (obfuscated != null) {
+            obfuscated.close();
+            obfuscated = null;
+        }
     }
 }

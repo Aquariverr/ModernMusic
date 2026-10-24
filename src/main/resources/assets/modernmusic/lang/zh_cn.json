@@ -88,6 +88,7 @@
   "modernmusic.auth.qr_verify_failed": "已收到手机授权，但账号校验失败。请重新扫码，或使用 Cookie 登录。",
   "modernmusic.auth.qr_missing_cookie": "手机已授权，但未收到有效登录凭据。请刷新二维码，或使用 Cookie 登录。",
   "modernmusic.auth.qr_network_retry": "扫码状态查询暂时失败，正在重试，请保留此页面。",
+  "modernmusic.auth.qr_retry": "重新获取二维码",
   "modernmusic.auth.cookie_help": "粘贴 Cookie 或完整导出 JSON，自动提取网易云 MUSIC_U 等登录字段。登录后可选择「记住登录」。",
   "modernmusic.auth.unlock_help": "记住的账号会自动登录，无需口令、扫码或验证码。可在此重试恢复或删除登录信息。",
   "modernmusic.auth.remember": "记住登录",

@@ -38,6 +38,9 @@ public final class FontSmoke {
             if (System.nanoTime() > deadline) throw new IllegalStateException("Font smoke timed out");
             if (game.getOverlay() != null) return;
             if (!started) {
+                var selector = FontSet.class.getDeclaredMethod("selectProviders", List.class, Set.class);
+                if (!java.lang.reflect.Modifier.isPrivate(selector.getModifiers()))
+                    throw new AssertionError("FontSet.selectProviders must stay private for font optimizer mixins");
                 game.options.onboardingAccessibilityFinished(); game.options.guiScale().set(2);
                 game.options.pauseOnLostFocus = false; game.getWindow().setWindowed(1280, 720); game.resizeDisplay();
                 started = true; frames = 5; return;
@@ -139,11 +142,28 @@ public final class FontSmoke {
             }
         }
         void verifyObfuscated() throws Exception {
+            var delegate = LazyFontSet.class.getDeclaredField("obfuscated"); delegate.setAccessible(true);
+            if (delegate.get(lazy) != null) throw new AssertionError("Obfuscated font was built before it was needed");
             var before = lazy.getGlyph('A');
             lazy.getRandomGlyph(lazy.getGlyphInfo('A', false));
             if (before != lazy.getGlyph('A')) throw new AssertionError("Obfuscated index invalidated a queued atlas glyph");
+            var obfuscated = (FontSet) delegate.get(lazy);
             var index = FontSet.class.getDeclaredField("glyphsByWidth"); index.setAccessible(true);
-            if (!index.get(eager).equals(index.get(lazy))) throw new AssertionError("Obfuscated candidate pool changed");
+            if (!index.get(eager).equals(index.get(obfuscated))) throw new AssertionError("Obfuscated candidate pool changed");
+            lazy.getRandomGlyph(lazy.getGlyphInfo('A', false));
+            if (delegate.get(lazy) != obfuscated) throw new AssertionError("Obfuscated font was rebuilt for every glyph");
+            var textures = FontSet.class.getDeclaredField("textures"); textures.setAccessible(true);
+            lazy.reload(Set.of());
+            if (delegate.get(lazy) != null || !((List<?>) textures.get(obfuscated)).isEmpty())
+                throw new AssertionError("Font option reload retained an obsolete obfuscated atlas");
+            lazy.getRandomGlyph(lazy.getGlyphInfo('A', false));
+            obfuscated = (FontSet) delegate.get(lazy);
+            eager.reload(Set.of());
+            if (!index.get(eager).equals(index.get(obfuscated))) throw new AssertionError("Obfuscated font ignored new options");
+            lazy.close();
+            if (delegate.get(lazy) != null || !((List<?>) textures.get(obfuscated)).isEmpty()
+                    || !((List<?>) textures.get(lazy)).isEmpty())
+                throw new AssertionError("Closing the font retained glyph atlases");
         }
         public void close() { eager.close(); lazy.close(); provider.close(); }
     }

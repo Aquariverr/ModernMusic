@@ -88,6 +88,7 @@
   "modernmusic.auth.qr_verify_failed": "Authorization received, but account verification failed. Try a new QR code or Cookie sign-in.",
   "modernmusic.auth.qr_missing_cookie": "Phone authorization returned no valid credential. Refresh the QR code or use Cookie sign-in.",
   "modernmusic.auth.qr_network_retry": "Temporarily unable to check QR status. Retrying; keep this page open.",
+  "modernmusic.auth.qr_retry": "Request new QR code",
   "modernmusic.auth.cookie_help": "Paste a Cookie header or full JSON export. NetEase login fields such as MUSIC_U are extracted automatically. You can remember the login.",
   "modernmusic.auth.unlock_help": "Remembered accounts restore automatically without a passphrase, QR code or SMS. Retry or delete local login data here.",
   "modernmusic.auth.remember": "Remember login",

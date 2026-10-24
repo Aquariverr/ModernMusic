@@ -260,6 +260,13 @@ neoForge {
             run.gameDirectory = project.file('runs/font-smoke')
             run.systemProperty 'modernmusic.fontSmoke', 'true'
         }
+        qrSmoke { RunModel run ->
+            run.client()
+            run.sourceSet.set(clientSmokeSources)
+            run.loadedMods.set(smokeMods)
+            run.gameDirectory = project.file('runs/qr-smoke')
+            run.systemProperty 'modernmusic.accountQrSmoke', 'true'
+        }
         uiGallery { RunModel run ->
             run.client()
             run.sourceSet.set(clientSmokeSources)

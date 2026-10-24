@@ -27,10 +27,11 @@ public final class AccountScreen extends MusicScreen {
     private final List<Button> actions = new ArrayList<>();
     private SecretEditBox cookie, smsCode;
     private EditBox country, phone;
-    private Button smsSend, smsLogin, sharedSource;
+    private Button smsSend, smsLogin, sharedSource, qrRetry;
     private String countryDraft = "86", phoneDraft = "";
     private int left, top, panelWidth, panelHeight, layout, tab;
     private AccountProvider.QrChallenge renderedChallenge;
+    private AccountProvider.QrMethod selectedQrMethod;
     private BitMatrix matrix;
     private String localError;
     private boolean verificationLayout;
@@ -39,11 +40,14 @@ public final class AccountScreen extends MusicScreen {
         super(Component.translatable(account.platform().key("auth.title"))); this.parent = parent; this.account = account;
     }
     private boolean supportsSms() { return account.platform() == dev.modernmusic.domain.MusicPlatform.NETEASE; }
-    private int currentLayout() { return account.session() != null ? 2 : account.qrActive() ? 1 : 0; }
+    // A failed/expired challenge ends polling, not the user's selected sign-in method.
+    private int currentLayout() { return account.session() != null ? 2 : selectedQrMethod != null || account.qrActive() ? 1 : 0; }
     @Override protected void initMusic() {
         font = UiFont.get();
         eraseFields(); cookie = null; smsCode = null; country = null; phone = null;
-        smsSend = null; smsLogin = null; sharedSource = null; actions.clear();
+        smsSend = null; smsLogin = null; sharedSource = null; qrRetry = null; actions.clear();
+        if (account.session() != null) selectedQrMethod = null;
+        else if (selectedQrMethod == null && account.qr() != null) selectedQrMethod = account.qr().method();
         panelWidth = Math.min(560, width - 24); panelHeight = Math.min(280, height - 20);
         left = (width - panelWidth) / 2; top = (height - panelHeight) / 2;
         layout = currentLayout();
@@ -56,7 +60,7 @@ public final class AccountScreen extends MusicScreen {
                         if (source != null) client().setScreen(new SharedSourceScreen(this, source));
                     }));
         if (layout == 1) {
-            button("gui.cancel", left + panelWidth - 108, top + panelHeight - 67, 92, account::cancelQr, false);
+            button("gui.cancel", left + panelWidth - 108, top + panelHeight - 67, 92, this::cancelQr, false);
             if (verificationLayout) {
                 int available = Math.min(140, panelHeight - 102);
                 int x = left + available + 30, w = panelWidth - available - 46;
@@ -69,8 +73,9 @@ public final class AccountScreen extends MusicScreen {
                     button("modernmusic.auth.qr_resume", x, top + 129, w, account::resumeQrAfterVerification, false);
                 }
                 button("modernmusic.auth.qr_use_sms", left + 16, top + panelHeight - 67, panelWidth - 132,
-                        () -> { account.cancelQr(); switchTab(1); }, true);
-            }
+                        () -> { cancelQr(); switchTab(1); }, true);
+            } else qrRetry = button("modernmusic.auth.qr_retry", left + 16, top + panelHeight - 67, panelWidth - 132,
+                    () -> beginQr(selectedQrMethod == null ? account.qrMethods().getFirst() : selectedQrMethod), true);
         } else if (layout == 0) {
             int count = 2 + account.qrMethods().size() + (supportsSms() ? 1 : 0);
             int tabWidth = (panelWidth - 32 - (count - 1) * 8) / count, index = 1;
@@ -84,7 +89,7 @@ public final class AccountScreen extends MusicScreen {
                     case WECHAT -> "modernmusic.qq.auth.qr_wechat";
                 };
                 actions.add(tab(button(label, left + 16 + (tabWidth + 8) * index++, top + 42, tabWidth,
-                        () -> account.beginQr(method), false), false));
+                        () -> beginQr(method), false), false));
             }
             actions.add(tab(button("modernmusic.auth.tab_saved", left + 16 + (tabWidth + 8) * index, top + 42,
                     tabWidth, () -> switchTab(2), false), tab == 2));
@@ -125,6 +130,8 @@ public final class AccountScreen extends MusicScreen {
                     top + buttonY, half, account::forgetSaved, false));
     }
     private void switchTab(int selected) { tab = selected; rebuildWidgets(); }
+    private void beginQr(AccountProvider.QrMethod method) { selectedQrMethod = method; account.beginQr(method); }
+    private void cancelQr() { selectedQrMethod = null; account.cancelQr(); rebuildWidgets(); }
     private static Button tab(Button button, boolean selected) { ((ThemedButton) button).selected(selected); return button; }
     private void submitSms() {
         String value = smsCode.getValue(); smsCode.setValue(""); account.loginSms(country.getValue(), phone.getValue(), value);
@@ -150,6 +157,7 @@ public final class AccountScreen extends MusicScreen {
         if (country != null) country.setEditable(!account.busy());
         if (phone != null) phone.setEditable(!account.busy());
         if (smsCode != null) smsCode.setEditable(!account.busy());
+        if (qrRetry != null) qrRetry.active = !account.busy() && !account.qrActive();
         if (smsSend != null) {
             int seconds = account.smsCooldownSeconds();
             smsSend.active = !account.busy() && seconds == 0;
@@ -248,7 +256,7 @@ public final class AccountScreen extends MusicScreen {
     }
     @Override public void removed() {
         eraseFields(); if (phone != null) phone.setValue(""); phoneDraft = "";
-        account.cancelQr(); renderedChallenge = null; matrix = null;
+        account.cancelQr(); selectedQrMethod = null; renderedChallenge = null; matrix = null;
     }
     @Override public void onClose() { client().setScreen(parent); }
 }

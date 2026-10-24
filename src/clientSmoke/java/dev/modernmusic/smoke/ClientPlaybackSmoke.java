@@ -49,7 +49,8 @@ public final class ClientPlaybackSmoke {
 
     public ClientPlaybackSmoke() {
         if (System.getProperty("modernmusic.roomSmoke") != null || Boolean.getBoolean("modernmusic.lifecycleSmoke") || Boolean.getBoolean("modernmusic.searchSmoke")
-                || Boolean.getBoolean("modernmusic.uiGallery") || Boolean.getBoolean("modernmusic.optionalClientSmoke") || Boolean.getBoolean("modernmusic.fontSmoke")) return;
+                || Boolean.getBoolean("modernmusic.uiGallery") || Boolean.getBoolean("modernmusic.optionalClientSmoke") || Boolean.getBoolean("modernmusic.fontSmoke")
+                || Boolean.getBoolean("modernmusic.accountQrSmoke")) return;
         NeoForge.EVENT_BUS.addListener(this::tick);
         NeoForge.EVENT_BUS.addListener(audio::selectMusic);
         NeoForge.EVENT_BUS.addListener(audio::playSound);
