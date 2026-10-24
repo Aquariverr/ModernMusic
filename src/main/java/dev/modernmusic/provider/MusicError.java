@@ -1,0 +1,11 @@
+package dev.modernmusic.provider;
+
+public enum MusicError {
+    AUTH_REQUIRED, AUTH_EXPIRED, SHARED_DISABLED, SHARED_FORBIDDEN, SHARED_EXPIRED, RATE_LIMITED, UNAVAILABLE, TRIAL_ONLY,
+    NETWORK_ERROR, INVALID_RESPONSE, UNSUPPORTED_FORMAT, RESOURCE_UNAVAILABLE, RESOURCE_TOO_LARGE, AUDIO_DEVICE, INTERNAL_ERROR,
+    AUDIO_NOT_FOUND, AUDIO_AMBIGUOUS, LOCAL_AUDIO_ONLY;
+
+    public String translationKey() {
+        return "modernmusic.error." + name().toLowerCase(java.util.Locale.ROOT);
+    }
+}

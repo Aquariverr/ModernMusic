@@ -284,6 +284,7 @@ neoForge {
             run.systemProperty 'modernmusic.sharedSmoke', gradleProviders.gradleProperty('sharedSmoke').getOrElse('false')
             run.systemProperty 'modernmusic.ftbSmoke', gradleProviders.gradleProperty('ftbSmoke').getOrElse('false')
             run.systemProperty 'modernmusic.roomUiSmoke', gradleProviders.gradleProperty('roomUiSmoke').getOrElse('false')
+            run.systemProperty 'modernmusic.publicRoomSmoke', gradleProviders.gradleProperty('publicRoomSmoke').getOrElse('false')
             run.programArguments.addAll('--username', 'RoomHost')
         }
         roomGuestSmoke { RunModel run ->
@@ -296,6 +297,7 @@ neoForge {
             run.systemProperty 'modernmusic.sharedSmoke', gradleProviders.gradleProperty('sharedSmoke').getOrElse('false')
             run.systemProperty 'modernmusic.ftbSmoke', gradleProviders.gradleProperty('ftbSmoke').getOrElse('false')
             run.systemProperty 'modernmusic.roomUiSmoke', gradleProviders.gradleProperty('roomUiSmoke').getOrElse('false')
+            run.systemProperty 'modernmusic.publicRoomSmoke', gradleProviders.gradleProperty('publicRoomSmoke').getOrElse('false')
             run.programArguments.addAll('--username', 'RoomGuest')
         }
         roomServerSmoke { RunModel run ->
@@ -533,7 +535,7 @@ tasks.register('releaseBundle', Zip) {
     from(releaseJar)
     from(releaseSources)
     from(releaseChecksums)
-    from('README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md')
+    from('README.md', 'CHANGELOG.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md')
     from('docs') { into 'docs' }
 }
 

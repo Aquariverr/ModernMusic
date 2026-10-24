@@ -1,0 +1,6 @@
+package dev.modernmusic.shared;
+
+public enum SharedAdminAction {
+    OPEN, KEEPALIVE, CLOSE, ENABLE, DISABLE, ACCESS_ALL, ACCESS_OPS,
+    QR_START, CANCEL_LOGIN, QR_RESUME, COOKIE_LOGIN, SAVE, RESTORE, FORGET
+}

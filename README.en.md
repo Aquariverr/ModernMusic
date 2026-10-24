@@ -7,7 +7,7 @@ Listen to NetEase Cloud Music, QQ Music, Kugou Music, and local audio in Minecra
 - Search for songs, import playlists, and manage multiple playback queues.
 - Play, pause, skip tracks, seek, adjust the volume, and switch repeat modes.
 - View album art, lyrics, and an in-game HUD, with ten visual themes to choose from.
-- Create listening groups or listen together with your FTB Teams teammates.
+- Join the server public room, create listening groups, or listen with FTB Teams teammates. Public-room administrators can appoint DJs and grant song-request permissions.
 - Browse and play local MP3 and WAV files. Drag and drop files to copy them into your local audio library; administrators can also drag and drop files to upload them to the server for use in individual or group queues.
 
 ![Modern Music player](docs/images/ui-player.png)
