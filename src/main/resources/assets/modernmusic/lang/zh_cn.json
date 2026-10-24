@@ -114,6 +114,7 @@
   "modernmusic.auth.qr_resume": "已验证，继续登录",
   "modernmusic.auth.qr_use_sms": "改用短信登录",
   "modernmusic.auth.qr_expired": "二维码已过期，请重新获取。",
+  "modernmusic.auth.qr_refresh": "重新获取二维码",
   "modernmusic.auth.qr_help": "用网易云音乐 App 扫一扫，并确认在本机登录。关闭此页面会取消扫码；二维码最多保留两分钟。",
   "modernmusic.auth.qr_error": "二维码生成失败，请重试。",
   "modernmusic.auth.invalid_cookie": "未找到当前平台的有效 Cookie，或导入格式有误、同名值冲突。请登录官网后重新导出 Cookie / JSON。",

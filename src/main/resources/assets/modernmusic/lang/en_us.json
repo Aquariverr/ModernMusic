@@ -114,6 +114,7 @@
   "modernmusic.auth.qr_resume": "Verified, continue",
   "modernmusic.auth.qr_use_sms": "Use SMS sign-in",
   "modernmusic.auth.qr_expired": "QR code expired. Request a new one.",
+  "modernmusic.auth.qr_refresh": "Get a new QR code",
   "modernmusic.auth.qr_help": "Scan with the NetEase Music app and confirm sign-in on this computer. Closing this page cancels the attempt. Codes last at most two minutes.",
   "modernmusic.auth.qr_error": "Could not generate the QR code. Please retry.",
   "modernmusic.auth.invalid_cookie": "No valid cookies for this platform, malformed import, or conflicting values. Sign in on the official site and export Cookie / JSON again.",

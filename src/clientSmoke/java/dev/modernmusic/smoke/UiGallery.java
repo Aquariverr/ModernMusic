@@ -42,6 +42,8 @@ public final class UiGallery {
     private final boolean localAudioGallery = "audio".equalsIgnoreCase(System.getenv("MODERN_MUSIC_GALLERY_ONLY"));
     private final boolean audioDropGallery = "audio-drop".equalsIgnoreCase(System.getenv("MODERN_MUSIC_GALLERY_ONLY"));
     private final boolean qrGallery = "qr".equalsIgnoreCase(System.getenv("MODERN_MUSIC_GALLERY_ONLY"));
+    private final boolean qrFailureGallery = "qr-errors".equalsIgnoreCase(System.getenv("MODERN_MUSIC_GALLERY_ONLY"));
+    private AccountQrScenario qrFailureScenario;
     private Runnable shotTick = () -> {};
     private java.util.function.BooleanSupplier shotReady = () -> true;
     private final boolean ae2MenuGallery = "room-ae2".equalsIgnoreCase(System.getenv("MODERN_MUSIC_GALLERY_ONLY"));
@@ -63,6 +65,19 @@ public final class UiGallery {
         try {
             if (hidden) org.lwjgl.glfw.GLFW.glfwHideWindow(game.getWindow().getWindow());
             if (System.nanoTime() > deadline) throw new IllegalStateException("Gallery timeout at step " + step + " shot " + shot);
+            if (qrFailureGallery) {
+                if (game.getOverlay() != null) return;
+                if (qrFailureScenario == null) {
+                    if (game.screen instanceof AccessibilityOnboardingScreen) game.setScreen(new TitleScreen());
+                    if (!(game.screen instanceof TitleScreen)) return;
+                    qrFailureScenario = new AccountQrScenario(game);
+                }
+                if (qrFailureScenario.tick(game)) {
+                    qrFailureScenario.close();
+                    finish(game, "PASS: QR generation/poll failures stay on the QR page; retry, expiry, cancel, reopen and successful sign-in");
+                }
+                return;
+            }
             if (step == 4) shotTick.run();
             if (ae2MenuGallery && step == 4 && game.screen instanceof RoomScreen) {
                 if (frames == 8) for (int i = 0; i < menuKeyboardSteps; i++) game.screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, 0, 0);
