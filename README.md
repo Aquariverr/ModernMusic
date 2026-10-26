@@ -17,9 +17,9 @@
 
 ## 安装
 
-将 `modernmusic-1.20.1-1.0.0.jar` 放入游戏目录的 `mods` 文件夹，进入世界后按 **Ctrl+M** 打开播放器。无需额外音乐 API 服务。
+将 `modernmusic-1.20.1-1.0.1.jar` 放入游戏目录的 `mods` 文件夹，进入世界后按 **Ctrl+M** 打开播放器。无需额外音乐 API 服务。
 
-构建生成的安装文件为 `build/libs/modernmusic-1.20.1-1.0.0.jar`，已内置 MP3 解码和二维码依赖；不要安装 `-slim.jar` 或 `-sources.jar`。使用 Minecraft 1.20.1、Forge 47.2 或更高的 47.x 版本与 Java 17。开发与启动验证使用 Forge 47.4.22。
+构建生成的安装文件为 `build/libs/modernmusic-1.20.1-1.0.1.jar`，已内置 MP3 解码和二维码依赖；不要安装 `-slim.jar` 或 `-sources.jar`。使用 Minecraft 1.20.1、Forge 47.2 或更高的 47.x 版本与 Java 17。开发与启动验证使用 Forge 47.4.22。
 
 个人播放只需客户端安装。多人同步和共享账号需要服务器与参与玩家安装兼容版本；FTB 队伍收听还需 FTB Teams 及其依赖。歌曲是否可播放取决于音乐平台和账号权限。
 
