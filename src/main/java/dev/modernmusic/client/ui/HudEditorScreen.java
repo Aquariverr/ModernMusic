@@ -16,11 +16,13 @@ public final class HudEditorScreen extends Screen {
     private final HudSettings settings;
     private HudSettings.Snapshot original;
     private HudSettings.Part selected = HudSettings.Part.COVER;
+    private boolean wholeHud = true;
+    private double wholeScale = 1;
     private ThemedSlider sizeSlider, opacitySlider;
     private boolean dragging, resizing, saveFailed, collapsed, compact, showHelp;
     private int panelX, panelY, panelWidth, panelHeight;
     private double dragX, dragY;
-    private int resizeLeft, resizeTop;
+    private double resizeLeft, resizeTop, resizeWidth, resizeHeight, resizeScale;
     private boolean guideX, guideY;
 
     public HudEditorScreen(Screen parent, PlaybackController player, HudSettings settings) {
@@ -32,8 +34,8 @@ public final class HudEditorScreen extends Screen {
         if (original == null) { original = settings.snapshot(width, height); collapsed = width < 520 || height < 340; }
         // Edit exactly what is shown at this size; cancel still restores the layout's original frame.
         settings.rebase(width, height);
-        int styleHeight = selected == HudSettings.Part.LYRICS ? 24 : 0;
-        compact = width < 520 || height < 340 + styleHeight;
+        int styleHeight = !wholeHud && selected == HudSettings.Part.LYRICS ? 24 : 0;
+        compact = width < 520 || height < 364 + styleHeight;
         sizeSlider = null; opacitySlider = null;
         if (collapsed) {
             panelWidth = 168; panelHeight = 32; panelX = width - panelWidth - 8; panelY = 8;
@@ -42,7 +44,7 @@ public final class HudEditorScreen extends Screen {
             return;
         }
         panelWidth = compact ? Math.min(460, width - 16) : 190;
-        panelHeight = (compact ? 166 : 326) + styleHeight;
+        panelHeight = (compact ? 190 : 350) + styleHeight;
         panelX = compact ? (width - panelWidth) / 2 : width - panelWidth - 8;
         panelY = compact ? height - panelHeight - 8 : (height - panelHeight) / 2;
         int x = panelX + 10, w = panelWidth - 20, y = panelY;
@@ -59,45 +61,49 @@ public final class HudEditorScreen extends Screen {
         int globalX = compact ? panelX + panelWidth - 136 : x, globalWidth = compact ? 102 : (w - 4) / 2;
         button(settings.enabled() ? "modernmusic.hud.on" : "modernmusic.hud.off", globalX, y + (compact ? 6 : 32), globalWidth,
                 false, () -> { settings.enabled(!settings.enabled()); rebuildWidgets(); }).selected(settings.enabled());
+        button("modernmusic.hud.all", x, y + (compact ? 32 : 60), w, false, () -> {
+            if (!wholeHud) wholeScale = 1;
+            wholeHud = true; rebuildWidgets();
+        }).selected(wholeHud).setTooltip(Tooltip.create(tr("modernmusic.hud.all_help")));
         for (var part : HudSettings.Part.values()) {
             int cell = (w - 9) / 4;
             int bx = compact ? x + part.ordinal() * (cell + 3) : x;
-            int by = y + (compact ? 32 : 60 + part.ordinal() * 24);
-            button(part.key(), bx, by, compact ? cell : w - 36, false, () -> select(part)).selected(part == selected);
+            int by = y + (compact ? 56 : 84 + part.ordinal() * 24);
+            button(part.key(), bx, by, compact ? cell : w - 36, false, () -> select(part)).selected(!wholeHud && part == selected);
             addRenderableWidget(new VisibilityButton(part, compact ? bx : x + w - 30, compact ? by + 23 : by, compact ? cell : 30));
         }
-        int sliderY = y + (compact ? 80 : 177), sliderWidth = compact ? (w - 6) / 2 : w;
-        sizeSlider = addRenderableWidget(new ThemedSlider(x, sliderY, sliderWidth, (current().scale() - .25) / 2.75) {
+        int sliderY = y + (compact ? 104 : 201), sliderWidth = compact && !wholeHud ? (w - 6) / 2 : w;
+        sizeSlider = addRenderableWidget(new ThemedSlider(x, sliderY, sliderWidth, (selectionScale() - .25) / 2.75) {
             { updateMessage(); }
             @Override protected void updateMessage() {
-                setMessage(selected == HudSettings.Part.LYRICS
+                setMessage(wholeHud ? Component.translatable("modernmusic.hud.all_scale", Math.round(wholeScale * 100)) : selected == HudSettings.Part.LYRICS
                         ? Component.translatable("modernmusic.hud.lyric_size", String.format(java.util.Locale.ROOT, "%.1f", font.lineHeight * current().scale()))
                         : Component.translatable("modernmusic.hud.scale", tr(selected.key()), Math.round(current().scale() * 100)));
             }
-            @Override protected void applyValue() { rescale(.25 + value * 2.75); updateMessage(); }
+            @Override protected void applyValue() { rescale(.25 + value * 2.75); value = (selectionScale() - .25) / 2.75; updateMessage(); }
         });
-        sizeSlider.setTooltip(Tooltip.create(tr("modernmusic.hud.resize_help")));
-        opacitySlider = addRenderableWidget(new ThemedSlider(compact ? x + sliderWidth + 6 : x, compact ? sliderY : sliderY + 32, sliderWidth, 1 - current().opacity()) {
+        sizeSlider.setTooltip(Tooltip.create(tr(wholeHud ? "modernmusic.hud.all_scale_help" : "modernmusic.hud.resize_help")));
+        if (!wholeHud) opacitySlider = addRenderableWidget(new ThemedSlider(compact ? x + sliderWidth + 6 : x, compact ? sliderY : sliderY + 32, sliderWidth, 1 - current().opacity()) {
             { updateMessage(); }
             @Override protected void updateMessage() { setMessage(Component.translatable("modernmusic.hud.opacity", Math.round((1 - current().opacity()) * 100))); }
             @Override protected void applyValue() { current().opacity(1 - value); updateMessage(); }
         });
-        if (selected == HudSettings.Part.LYRICS) {
-            var style = button("modernmusic.hud.lyric_style", x, y + (compact ? 108 : 240), w, false,
+        if (!wholeHud && selected == HudSettings.Part.LYRICS) {
+            var style = button("modernmusic.hud.lyric_style", x, y + (compact ? 132 : 264), w, false,
                     () -> { settings.lyricStyle(settings.lyricStyle().next()); rebuildWidgets(); });
             style.setMessage(Component.translatable("modernmusic.hud.lyric_style", tr(settings.lyricStyle().key())));
             style.setTooltip(Tooltip.create(tr("modernmusic.hud.lyric_style_help")));
         }
-        int alignY = y + (compact ? 113 : 244) + styleHeight;
+        int alignY = y + (compact ? 137 : 268) + styleHeight;
         int alignWidth = compact ? (w / 2 - 8) / 3 : (w - 8) / 3;
         button("modernmusic.hud.align_left", x, alignY, alignWidth, false, () -> align(0));
         button("modernmusic.hud.align_center", x + alignWidth + 4, alignY, alignWidth, false, () -> align(.5));
         button("modernmusic.hud.align_right", x + 2 * (alignWidth + 4), alignY, alignWidth, false, () -> align(1));
-        int resetY = compact ? alignY : y + 268 + styleHeight, resetX = compact ? x + w / 2 + 4 : x;
+        int resetY = compact ? alignY : y + 292 + styleHeight, resetX = compact ? x + w / 2 + 4 : x;
         int resetWidth = compact ? (w - w / 2 - 8) / 2 : (w - 4) / 2;
-        button("modernmusic.hud.reset_part", resetX, resetY, resetWidth, false, () -> { settings.reset(selected, width, height); rebuildWidgets(); });
-        button("modernmusic.hud.reset", resetX + resetWidth + 4, resetY, resetWidth, false, () -> { settings.reset(); rebuildWidgets(); });
-        int bottom = y + (compact ? 140 : 296) + styleHeight;
+        button("modernmusic.hud.reset_part", resetX, resetY, resetWidth, false, () -> { settings.reset(selected, width, height); rebuildWidgets(); }).active = !wholeHud;
+        button("modernmusic.hud.reset", resetX + resetWidth + 4, resetY, resetWidth, false, () -> { settings.reset(); wholeScale = 1; rebuildWidgets(); });
+        int bottom = y + (compact ? 164 : 320) + styleHeight;
         int fontX = compact ? x : x + globalWidth + 4, fontY = compact ? bottom : y + 32, fontWidth = compact ? (w - 8) / 3 : w - globalWidth - 4;
         var typeface = button("modernmusic.hud.font", fontX, fontY, fontWidth, false, () -> {
             settings.font(settings.font().next()); UiFont.smooth(settings.font() == HudSettings.FontStyle.SMOOTH); rebuildWidgets();
@@ -114,21 +120,31 @@ public final class HudEditorScreen extends Screen {
     }
     private static Component tr(String key) { return Component.translatable(key); }
     private HudSettings.Transform current() { return settings.component(selected); }
-    private void select(HudSettings.Part part) { selected = part; rebuildWidgets(); }
+    private void select(HudSettings.Part part) { wholeHud = false; selected = part; rebuildWidgets(); }
+    private double selectionScale() { return wholeHud ? wholeScale : current().scale(); }
+    private HudSettings.Bounds selectionBounds() {
+        return wholeHud ? settings.bounds(width, height) : new HudSettings.Bounds(current().left(width, height), current().top(width, height),
+                selected.width * current().fitScale(width, height), selected.height * current().fitScale(width, height));
+    }
+    private void position(double left, double top) {
+        if (wholeHud) settings.positionAll(left, top, width, height);
+        else current().position(left, top, width, height);
+    }
     private void togglePanel() { collapsed = !collapsed; showHelp = false; rebuildWidgets(); setFocused(null); }
     private void cancel() {
         settings.restore(original); UiFont.smooth(settings.font() == HudSettings.FontStyle.SMOOTH); PlayerTheme.apply(settings.theme());
         net.minecraft.client.Minecraft.getInstance().setScreen(parent);
     }
     private void align(double fraction) {
-        current().position(4 + (width - 8 - selected.width * current().fitScale(width, height)) * fraction, current().top(width, height), width, height);
+        var box = selectionBounds(); position(4 + (width - 8 - box.width()) * fraction, box.top());
     }
     private void rescale(double scale) {
+        if (wholeHud) { wholeScale *= settings.scaleAll(dev.modernmusic.compat.Java17.clamp(scale, .25, 3) / wholeScale, width, height); return; }
         int left = current().left(width, height), top = current().top(width, height);
         current().scale(scale); current().position(left, top, width, height);
     }
     private void syncSliders() {
-        if (sizeSlider != null) sizeSlider.syncValue((current().scale() - .25) / 2.75);
+        if (sizeSlider != null) sizeSlider.syncValue((selectionScale() - .25) / 2.75);
         if (opacitySlider != null) opacitySlider.syncValue(1 - current().opacity());
     }
     @ParametersAreNonnullByDefault @Override public void renderBackground(GuiGraphics g) { if (net.minecraft.client.Minecraft.getInstance().level == null) renderDirtBackground(g); }
@@ -139,12 +155,13 @@ public final class HudEditorScreen extends Screen {
             var transform = settings.component(part);
             int left = transform.left(width, height), top = transform.top(width, height);
             int w = (int) Math.ceil(part.width * transform.fitScale(width, height)), h = (int) Math.ceil(part.height * transform.fitScale(width, height));
-            int color = part == selected ? WORLD_ACCENT : transform.enabled() ? 0x8CCDD1D6 : 0x598A8F96;
+            boolean active = !wholeHud && part == selected;
+            int color = active ? WORLD_ACCENT : transform.enabled() ? 0x8CCDD1D6 : 0x598A8F96;
             if (part == HudSettings.Part.LYRICS) Shapes.rect(g, left - 2, top + h + 1, w + 4, 1.5f, .75f, color);
-            else if (pixel()) { frame(g, left - 2, top - 2, w + 4, h + 4, color); if (part == selected) frame(g, left - 3, top - 3, w + 6, h + 6, color); }
-            else Shapes.ring(g, left - 2, top - 2, w + 4, h + 4, 4, part == selected ? 2 : 1, color);
+            else if (pixel()) { frame(g, left - 2, top - 2, w + 4, h + 4, color); if (active) frame(g, left - 3, top - 3, w + 6, h + 6, color); }
+            else Shapes.ring(g, left - 2, top - 2, w + 4, h + 4, 4, active ? 2 : 1, color);
             if (!transform.enabled()) worldText(g, font, ellipsis(font, tr("modernmusic.hud.hidden").getString(), w), left + 2, top + 2, WORLD_MUTED);
-            if (part == selected) {
+            if (active) {
                 String label = tr(part.key()).getString() + " · " + Math.round(transform.scale() * 100) + "%";
                 int labelWidth = font.width(label) + 12;
                 int labelX = dev.modernmusic.compat.Java17.clamp(left - 2, 2, Math.max(2, width - labelWidth - 2)), labelY = Math.max(1, top - 16);
@@ -157,8 +174,20 @@ public final class HudEditorScreen extends Screen {
                 }
             }
         }
-        if (guideX) g.fill(current().left(width, height), 0, current().left(width, height) + 1, height, alpha(WORLD_ACCENT, .4));
-        if (guideY) g.fill(0, current().top(width, height), width, current().top(width, height) + 1, alpha(WORLD_ACCENT, .4));
+        var box = selectionBounds();
+        int selectionLeft = (int) Math.round(box.left()), selectionTop = (int) Math.round(box.top());
+        if (wholeHud) {
+            int w = (int) Math.ceil(box.width()), h = (int) Math.ceil(box.height());
+            frame(g, selectionLeft - 3, selectionTop - 3, w + 6, h + 6, WORLD_ACCENT);
+            String label = tr("modernmusic.hud.all").getString(); int labelWidth = font.width(label) + 12;
+            int labelX = dev.modernmusic.compat.Java17.clamp(selectionLeft - 2, 2, Math.max(2, width - labelWidth - 2)), labelY = Math.max(1, selectionTop - 16);
+            surface(g, labelX, labelY, labelWidth, 13, 6.5f, alpha(TOOLTIP, .92));
+            g.drawString(font, label, labelX + 6, labelY + 3, 0xFFFFFFFF, false);
+            circle(g, selectionLeft + w, selectionTop + h, 5, WORLD_ACCENT);
+            circle(g, selectionLeft + w, selectionTop + h, 2, INK);
+        }
+        if (guideX) g.fill(selectionLeft, 0, selectionLeft + 1, height, alpha(WORLD_ACCENT, .4));
+        if (guideY) g.fill(0, selectionTop, width, selectionTop + 1, alpha(WORLD_ACCENT, .4));
         // Font glyphs have their own depth offset. Put the entire inspector above the canvas,
         // including when a component is positioned underneath it in a small window.
         g.pose().pushPose(); g.pose().translate(0, 0, 200);
@@ -166,7 +195,13 @@ public final class HudEditorScreen extends Screen {
         if (!collapsed) {
             header(g, panelX, panelY, panelWidth, 31);
             heading(g, tr("modernmusic.hud.inspector").getString(), panelX + 10, panelY + 16, HEAD_TEXT);
-            if (!compact) g.drawString(font, tr("modernmusic.hud.selection"), panelX + 10, panelY + 164, MUTED, false);
+            if (!compact) {
+                g.drawString(font, tr(wholeHud ? "modernmusic.hud.all" : "modernmusic.hud.selection"), panelX + 10, panelY + 188, MUTED, false);
+                if (wholeHud) {
+                    var lines = font.split(tr("modernmusic.hud.all_scale_help"), panelWidth - 20);
+                    for (int i = 0; i < Math.min(3, lines.size()); i++) g.drawString(font, lines.get(i), panelX + 10, panelY + 236 + i * 10, MUTED, false);
+                }
+            }
         }
         for (var widget : renderables) widget.render(g, x, y, delta);
         g.pose().popPose();
@@ -180,8 +215,7 @@ public final class HudEditorScreen extends Screen {
     }
     private boolean inPanel(double x, double y) { return x >= panelX && x < panelX + panelWidth && y >= panelY && y < panelY + panelHeight; }
     private boolean inHandle(double x, double y) {
-        double right = current().left(width, height) + selected.width * current().fitScale(width, height);
-        double bottom = current().top(width, height) + selected.height * current().fitScale(width, height);
+        var box = selectionBounds(); double right = box.left() + box.width(), bottom = box.top() + box.height();
         return Math.abs(x - right) <= 7 && Math.abs(y - bottom) <= 7;
     }
     private HudSettings.Part hit(double x, double y) {
@@ -199,8 +233,14 @@ public final class HudEditorScreen extends Screen {
         }
         if (inPanel(x, y) || button != 0) return false;
         if (inHandle(x, y)) {
-            resizing = true; resizeLeft = current().left(width, height); resizeTop = current().top(width, height);
+            var box = selectionBounds(); resizing = true; resizeLeft = box.left(); resizeTop = box.top();
+            resizeWidth = wholeHud ? box.width() : selected.width; resizeHeight = wholeHud ? box.height() : selected.height;
+            resizeScale = wholeHud ? wholeScale : 1;
             setFocused(null); return true;
+        }
+        if (wholeHud && selectionBounds().contains(x, y)) {
+            var box = selectionBounds(); setFocused(null); dragging = true;
+            dragX = x - box.left(); dragY = y - box.top(); return true;
         }
         var part = hit(x, y);
         if (part != null) {
@@ -217,15 +257,15 @@ public final class HudEditorScreen extends Screen {
     @Override public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
         if (button == 0 && resizing) {
             // Project onto the component's diagonal, preserving aspect ratio without favoring its long edge.
-            double scale = ((x - resizeLeft) * selected.width + (y - resizeTop) * selected.height)
-                    / (selected.width * selected.width + selected.height * selected.height);
-            current().scale(scale); current().position(resizeLeft, resizeTop, width, height); syncSliders(); return true;
+            double scale = ((x - resizeLeft) * resizeWidth + (y - resizeTop) * resizeHeight)
+                    / (resizeWidth * resizeWidth + resizeHeight * resizeHeight);
+            rescale(scale * resizeScale); position(resizeLeft, resizeTop); syncSliders(); return true;
         }
         if (button == 0 && dragging) {
-            double scale = current().fitScale(width, height);
-            double left = snap(x - dragX, selected.width * scale, width), top = snap(y - dragY, selected.height * scale, height);
+            var box = selectionBounds();
+            double left = snap(x - dragX, box.width(), width), top = snap(y - dragY, box.height(), height);
             guideX = left != x - dragX; guideY = top != y - dragY;
-            current().position(left, top, width, height); return true;
+            position(left, top); return true;
         }
         return super.mouseDragged(x, y, button, dx, dy);
     }
@@ -236,6 +276,7 @@ public final class HudEditorScreen extends Screen {
     }
     @Override public boolean mouseScrolled(double x, double y, double vertical) {
         if (!inPanel(x, y)) {
+            if (wholeHud && selectionBounds().contains(x, y)) { rescale(wholeScale + vertical * .05); syncSliders(); return true; }
             var part = hit(x, y);
             if (part != null) { if (part != selected) select(part); rescale(current().scale() + vertical * .05); syncSliders(); return true; }
         }
@@ -247,10 +288,10 @@ public final class HudEditorScreen extends Screen {
             int direction = key == GLFW.GLFW_KEY_RIGHT || key == GLFW.GLFW_KEY_UP ? 1 : -1;
             // Adjust the displayed unit, independently of the slider's width.
             if (sizeSlider != null && getFocused() == sizeSlider) {
-                if (selected == HudSettings.Part.LYRICS) {
+                if (!wholeHud && selected == HudSettings.Part.LYRICS) {
                     double fontSize = Math.round(font.lineHeight * current().scale() * 10) / 10.0;
                     rescale((fontSize + direction) / font.lineHeight);
-                } else rescale((Math.round(current().scale() * 100) + direction) / 100.0);
+                } else rescale((Math.round(selectionScale() * 100) + direction) / 100.0);
                 syncSliders(); return true;
             }
             if (opacitySlider != null && getFocused() == opacitySlider) {
@@ -259,8 +300,9 @@ public final class HudEditorScreen extends Screen {
             }
             if (getFocused() == null) {
                 int step = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0 ? 10 : 1;
-                current().position(current().left(width, height) + (key == GLFW.GLFW_KEY_RIGHT ? step : key == GLFW.GLFW_KEY_LEFT ? -step : 0),
-                        current().top(width, height) + (key == GLFW.GLFW_KEY_DOWN ? step : key == GLFW.GLFW_KEY_UP ? -step : 0), width, height); return true;
+                var box = selectionBounds();
+                position(box.left() + (key == GLFW.GLFW_KEY_RIGHT ? step : key == GLFW.GLFW_KEY_LEFT ? -step : 0),
+                        box.top() + (key == GLFW.GLFW_KEY_DOWN ? step : key == GLFW.GLFW_KEY_UP ? -step : 0)); return true;
             }
         }
         return super.keyPressed(key, scan, modifiers);

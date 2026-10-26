@@ -118,6 +118,59 @@ public final class HudSettings {
         frameWidth = width; frameHeight = height;
         for (var part : Part.values()) component(part).place(corners[part.ordinal()][0], corners[part.ordinal()][1], width, height);
     }
+    /** Bounds of the entire editable HUD, including hidden parts so showing them later preserves the layout. */
+    public record Bounds(double left, double top, double width, double height) {
+        public boolean contains(double x, double y) { return x >= left && y >= top && x < left + width && y < top + height; }
+    }
+    public Bounds bounds(int width, int height) {
+        return bounds(layout(width, height), width, height);
+    }
+    private Bounds bounds(double[][] corners, int width, int height) {
+        double left = Double.MAX_VALUE, top = Double.MAX_VALUE, right = -Double.MAX_VALUE, bottom = -Double.MAX_VALUE;
+        for (var part : Part.values()) {
+            var corner = corners[part.ordinal()]; double scale = component(part).fitScale(width, height);
+            left = Math.min(left, corner[0]); top = Math.min(top, corner[1]);
+            right = Math.max(right, corner[0] + part.width * scale); bottom = Math.max(bottom, corner[1] + part.height * scale);
+        }
+        return new Bounds(left, top, right - left, bottom - top);
+    }
+    /** Clamp one shared displacement, rather than clamping each part and crushing the gaps at screen edges. */
+    public void positionAll(double left, double top, int width, int height) {
+        if (!Double.isFinite(left) || !Double.isFinite(top)) return;
+        rebase(width, height);
+        var corners = layout(width, height); var box = bounds(corners, width, height);
+        double dx = dev.modernmusic.compat.Java17.clamp(left - box.left, 4 - box.left, Math.max(4 - box.left, width - 4 - box.left - box.width));
+        double dy = dev.modernmusic.compat.Java17.clamp(top - box.top, 4 - box.top, Math.max(4 - box.top, height - 4 - box.top - box.height));
+        for (var part : Part.values()) {
+            var corner = corners[part.ordinal()]; component(part).place(corner[0] + dx, corner[1] + dy, width, height);
+        }
+    }
+    /**
+     * Scale the visible geometry about its top-left corner, preserving relative sizes and spacing. A single factor
+     * respects every part's size limits and the viewport. Returns the factor actually applied for editor controls.
+     */
+    public double scaleAll(double factor, int width, int height) {
+        if (!Double.isFinite(factor) || factor <= 0 || factor == 1) return 1;
+        rebase(width, height);
+        var corners = layout(width, height); var box = bounds(corners, width, height);
+        double min = 0, max = Math.min((width - 8) / box.width, (height - 8) / box.height);
+        var scales = new double[Part.values().length];
+        for (var part : Part.values()) {
+            double scale = component(part).fitScale(width, height); scales[part.ordinal()] = scale;
+            min = Math.max(min, .25 / scale); max = Math.min(max, 3 / scale);
+        }
+        // An extremely small viewport may already be below the minimum editable size.
+        if (min > max) return 1;
+        factor = dev.modernmusic.compat.Java17.clamp(factor, min, max);
+        double left = dev.modernmusic.compat.Java17.clamp(box.left, 4, Math.max(4, width - 4 - box.width * factor));
+        double top = dev.modernmusic.compat.Java17.clamp(box.top, 4, Math.max(4, height - 4 - box.height * factor));
+        for (var part : Part.values()) {
+            var t = component(part); var corner = corners[part.ordinal()];
+            t.scale(scales[part.ordinal()] * factor);
+            t.place(left + (corner[0] - box.left) * factor, top + (corner[1] - box.top) * factor, width, height);
+        }
+        return factor;
+    }
     /** Top-left corner of every component at this GUI size, indexed by ordinal. */
     private double[][] layout(int width, int height) {
         ensureLayout(width, height);

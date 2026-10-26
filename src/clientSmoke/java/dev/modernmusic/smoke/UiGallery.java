@@ -156,6 +156,7 @@ public final class UiGallery {
     }
 
     private void planShots(Minecraft game) {
+        if ("hud".equalsIgnoreCase(System.getenv("MODERN_MUSIC_GALLERY_ONLY"))) { planHudShots(game); return; }
         if (roomAvatarGallery) { planRoomAvatarShots(game); return; }
         if (audioDropGallery) { planAudioDropShots(game); return; }
         if (localAudioGallery) { planAudioShots(game); return; }
@@ -773,6 +774,25 @@ public final class UiGallery {
     private void theme(Minecraft game, HudSettings.Theme theme) {
         PlayerTheme.apply(theme);
         try { ArtworkCache.clearIfCreated(); seedArtwork(game); } catch (Exception failure) { throw new IllegalStateException(failure); }
+    }
+    private void planHudShots(Minecraft game) {
+        add("hud-all-interactions", 1280, 800, 2, () -> HudEditorScenario.verify(game, player, output.resolve("hud-edit-fixture.json")));
+        for (int[] size : new int[][]{{1280, 800}, {680, 480}, {640, 400}}) {
+            add("hud-all-" + size[0], size[0], size[1], 2, () -> {
+                hud.reset(); game.setScreen(new HudEditorScreen(null, player, hud));
+                HudEditorScenario.expand(game); HudEditorScenario.press(game, "modernmusic.hud.all");
+                HudEditorScenario.checkWidgets(game);
+            });
+            add("hud-lyrics-" + size[0], size[0], size[1], 2, () -> {
+                hud.reset(); game.setScreen(new HudEditorScreen(null, player, hud));
+                HudEditorScenario.expand(game); HudEditorScenario.press(game, "modernmusic.hud.part.lyrics");
+                HudEditorScenario.checkWidgets(game);
+            });
+        }
+        add("hud-all-pixel", 1280, 800, 2, () -> {
+            theme(game, HudSettings.Theme.OREUI); hud.reset(); game.setScreen(new HudEditorScreen(null, player, hud));
+            HudEditorScenario.press(game, "modernmusic.hud.all"); HudEditorScenario.checkWidgets(game);
+        });
     }
     private void add(String name, int width, int height, int scale, Runnable setup) { shots.add(new Shot(name + ".png", width, height, scale, setup, -100, -100)); }
 
