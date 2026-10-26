@@ -248,6 +248,74 @@ class HudSettingsTest {
         assertEquals(1.6, loaded.component(HudSettings.Part.LYRICS).scale()); assertEquals(500, loaded.snapshot(500, 300).layoutWidth());
     }
 
+    @Test void movingAllPreservesOffsetsIncludingHiddenPartsAndClampsAsAUnit() {
+        var hud = new HudSettings(directory.resolve("move-all.json")); hud.ensureLayout(800, 600);
+        hud.component(HudSettings.Part.LYRICS).enabled(false); hud.component(HudSettings.Part.INFO).opacity(.4);
+        var before = bounds(hud, 800, 600); var box = hud.bounds(800, 600);
+        hud.positionAll(box.left() + 100, box.top() + 80, 800, 600);
+        for (var part : HudSettings.Part.values()) assertEquals(before.get(part).shift(100, 80), bounds(hud, 800, 600).get(part));
+        hud.positionAll(10000, 10000, 800, 600);
+        var edge = hud.bounds(800, 600);
+        assertEquals(796, edge.left() + edge.width(), 1e-8); assertEquals(596, edge.top() + edge.height(), 1e-8);
+        assertEquals(box.width(), edge.width(), 1e-8); assertEquals(box.height(), edge.height(), 1e-8);
+        hud.positionAll(-10000, -10000, 800, 600);
+        assertEquals(4, hud.bounds(800, 600).left(), 1e-8); assertEquals(4, hud.bounds(800, 600).top(), 1e-8);
+        assertFalse(hud.component(HudSettings.Part.LYRICS).enabled()); assertEquals(.4, hud.component(HudSettings.Part.INFO).opacity());
+        assertSeparateAndOnScreen(bounds(hud, 800, 600), 800, 600);
+    }
+    @Test void scalingAllPreservesCustomSizeRatiosOffsetsAndAppearance() {
+        var hud = new HudSettings(directory.resolve("scale-all.json")); hud.ensureLayout(1000, 700);
+        hud.component(HudSettings.Part.COVER).scale(.5); hud.component(HudSettings.Part.INFO).opacity(.3);
+        hud.component(HudSettings.Part.LYRICS).enabled(false); hud.lyricStyle(HudSettings.LyricStyle.BOLD);
+        var before = bounds(hud, 1000, 700); var box = hud.bounds(1000, 700);
+        assertEquals(1.5, hud.scaleAll(1.5, 1000, 700), 1e-8);
+        var after = hud.bounds(1000, 700);
+        assertEquals(box.width() * 1.5, after.width(), 1e-8); assertEquals(box.height() * 1.5, after.height(), 1e-8);
+        for (var part : HudSettings.Part.values()) {
+            var t = hud.component(part);
+            assertEquals(part == HudSettings.Part.COVER ? .75 : 1.5, t.scale(), 1e-8);
+            assertEquals(after.left() + (before.get(part).left() - box.left()) * 1.5, t.left(1000, 700), 1.3);
+            assertEquals(after.top() + (before.get(part).top() - box.top()) * 1.5, t.top(1000, 700), 1.3);
+        }
+        assertFalse(hud.component(HudSettings.Part.LYRICS).enabled()); assertEquals(.3, hud.component(HudSettings.Part.INFO).opacity());
+        assertEquals(HudSettings.LyricStyle.BOLD, hud.lyricStyle());
+        assertSeparateAndOnScreen(bounds(hud, 1000, 700), 1000, 700);
+    }
+    @Test void wholeScalingUsesOneLimitForAllPartsAndFitsTheViewport() {
+        var hud = new HudSettings(directory.resolve("limits.json")); hud.ensureLayout(800, 600);
+        hud.component(HudSettings.Part.COVER).scale(.5);
+        assertEquals(.5, hud.scaleAll(.01, 800, 600), 1e-8);
+        assertEquals(.25, hud.component(HudSettings.Part.COVER).scale());
+        assertEquals(.5, hud.component(HudSettings.Part.LYRICS).scale());
+        assertEquals(1, hud.scaleAll(.5, 800, 600), 1e-8);
+        hud.reset(); hud.ensureLayout(1200, 800); hud.component(HudSettings.Part.COVER).scale(2);
+        assertEquals(1.5, hud.scaleAll(100, 1200, 800), 1e-8);
+        assertEquals(3, hud.component(HudSettings.Part.COVER).scale()); assertEquals(1.5, hud.component(HudSettings.Part.INFO).scale());
+        hud.reset(); hud.ensureLayout(400, 240); hud.positionAll(10000, 10000, 400, 240);
+        double factor = hud.scaleAll(3, 400, 240);
+        assertEquals(392.0 / 280, factor, 1e-8);
+        for (var part : HudSettings.Part.values()) assertEquals(factor, hud.component(part).scale(), 1e-8);
+        assertSeparateAndOnScreen(bounds(hud, 400, 240), 400, 240);
+    }
+    @Test void wholeEditsAtAnotherGuiSizeSaveReloadAndCancelWithoutChangingTheFormat() {
+        Path file = directory.resolve("whole-persist.json"); var hud = new HudSettings(file); hud.ensureLayout(800, 600);
+        var original = hud.snapshot(800, 600);
+        hud.positionAll(70, 130, 640, 400); hud.scaleAll(1.2, 640, 400);
+        var edited = hud.snapshot(640, 400); assertEquals(640, edited.layoutWidth()); assertTrue(hud.save());
+        assertEquals(edited, new HudSettings(file).snapshot(640, 400));
+        assertSeparateAndOnScreen(bounds(hud, 640, 400), 640, 400);
+        hud.restore(original); assertEquals(original, hud.snapshot(800, 600));
+        assertEquals(edited, new HudSettings(file).snapshot(640, 400), "cancel does not write to disk");
+    }
+    @Test void invalidWholeTransformsAndTinyViewportsNeverCorruptSettings() {
+        var hud = new HudSettings(directory.resolve("whole-invalid.json")); hud.ensureLayout(800, 600);
+        var before = hud.snapshot(800, 600);
+        for (double value : new double[]{Double.NaN, Double.POSITIVE_INFINITY, -1, 0}) assertEquals(1, hud.scaleAll(value, 800, 600));
+        hud.positionAll(Double.NaN, 10, 800, 600); assertEquals(before, hud.snapshot(800, 600));
+        var tiny = bounds(hud, 60, 40); assertEquals(1, hud.scaleAll(.5, 60, 40));
+        assertEquals(tiny, bounds(hud, 60, 40));
+    }
+
     private record Rect(int left, int top, int right, int bottom) {
         boolean overlaps(Rect other) { return left < other.right && other.left < right && top < other.bottom && other.top < bottom; }
         Rect shift(int dx, int dy) { return new Rect(left + dx, top + dy, right + dx, bottom + dy); }
